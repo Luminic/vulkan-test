@@ -42,43 +42,43 @@ public:
     // Resource functions (only valid from `init_resources` to `release_resources`)
     //=============================================================================
 
-    inline VkPhysicalDevice get_physical_device();
-    inline VkDevice get_device();
+    VkPhysicalDevice get_physical_device() {return physical_device;}
+    VkDevice get_device() {return device;}
     
-    inline VkFormat get_color_format();
+    VkFormat get_color_format() {return swap_chain_surface_format.format;}
+    VkColorSpaceKHR get_color_space() {return swap_chain_surface_format.colorSpace;}
 
-    inline VkRenderPass get_default_render_pass();
+    VkRenderPass get_default_render_pass() {return default_render_pass;}
 
-    inline VkQueue get_graphics_queue();
-    inline uint32_t get_graphics_queue_family_index();
-    inline VkCommandPool get_graphics_command_pool();
+    VkQueue get_graphics_queue() {return graphics_queue;}
+    uint32_t get_graphics_queue_family_index() {return queue_families.graphics_family.value();}
+    VkCommandPool get_graphics_command_pool() {return command_pool;}
 
 
     // Swap chain functions (only valid from `init_swap_chain_resources` to `release_swap_chain_resources`)
     //=====================================================================================================
 
     // See: `get_nr_frames()`
-    inline uint32_t get_nr_concurrent_images();
+    uint32_t get_nr_concurrent_images() {return image_count;}
 
     // Get image size
-    VkExtent2D get_image_extent();
-
-    VkCommandBuffer get_current_command_buffer();
-    VkFramebuffer get_current_frame_buffer();
-
+    VkExtent2D get_image_extent() {return swap_chain_extent;}
 
 
     // Frame functions (only valid after `start_next_frame` and before `frame_ready` is called)
     //=========================================================================================
 
-    inline uint32_t get_current_image_index();
-    inline uint32_t get_current_frame_index();
+    uint32_t get_current_image_index() {return image_index;}
+    uint32_t get_current_frame_index() {return frame_index;}
 
-    VkImage get_current_image();
-    VkImageView get_current_image_view();
+    VkImage get_current_image() {return image_resources[image_index].image;}
+    VkImageView get_current_image_view() {return image_resources[image_index].image_view;}
+
+    VkCommandBuffer get_current_command_buffer() {return image_resources[image_index].command_buffer;}
+    VkFramebuffer get_current_frame_buffer() {return image_resources[image_index].framebuffer;}
 
     // Should be called every time `start_next_frame` is called after finishing frame commands
-    void frame_ready();
+    void frame_ready() {end_frame();}
     
 
 protected:

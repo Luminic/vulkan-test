@@ -18,6 +18,11 @@ public:
 
 private:
     VulkanWindow* vulkan_window;
+
+    QVulkanFunctions* vkf = nullptr;
+    QVulkanDeviceFunctions* vkdf = nullptr;
+
+    VkDevice device = VK_NULL_HANDLE;
 };
 
 #endif

@@ -18,9 +18,9 @@ VulkanWindow::~VulkanWindow() {
     delete vulkan_renderer;
 }
 
-void VulkanWindow::frame_ready() {
-    end_frame();
-}
+
+// Private Functions:
+//===================
 
 void VulkanWindow::init_resources() {
     vulkan_renderer->pre_init_resources(this);
@@ -124,10 +124,9 @@ void VulkanWindow::begin_frame() {
     vkdf->vkWaitForFences(device, 1, &frame_resource.fence, VK_TRUE, -1);
 
     res = vkAcquireNextImageKHR(device, swap_chain, -1, frame_resources[frame_index].image_available_semaphore, VK_NULL_HANDLE, &image_index);
-    if (res == VK_ERROR_OUT_OF_DATE_KHR) { // Resize will be dealt with by `resizeEvent`
-        requestUpdate();
+    if (res == VK_ERROR_OUT_OF_DATE_KHR) // Resize will be dealt with by `resizeEvent`
         return;
-    } else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
+    else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
         qFatal("VulkanWindow: Failed to aquire next image to render on: %d", res);
 
     ImageResources& image_resource = image_resources[image_index];
@@ -150,24 +149,7 @@ void VulkanWindow::begin_frame() {
     if (res != VK_SUCCESS)
         qFatal("VulkanWindow: Failed to begin recording framebuffer: %d", res);
 
-    // vulkan_renderer->start_next_frame();
-    static float green = 0.0f;
-    green += 0.005f;
-    if (green > 1.0f) green -= 1.0f;
-    VkClearColorValue clear_color = {{0.0f, green, 0.0f, 1.0f}};
-    VkClearValue clear_value{};
-    clear_value.color = clear_color;
-
-    VkRenderPassBeginInfo render_pass_begin_info{};
-    render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    render_pass_begin_info.renderPass = default_render_pass;
-    render_pass_begin_info.framebuffer = image_resource.framebuffer;
-    render_pass_begin_info.renderArea.extent = swap_chain_extent;
-    render_pass_begin_info.clearValueCount = 1;
-    render_pass_begin_info.pClearValues = &clear_value;
-    vkdf->vkCmdBeginRenderPass(image_resource.command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    vkdf->vkCmdEndRenderPass(image_resource.command_buffer);
-    frame_ready();
+    vulkan_renderer->start_next_frame();
 }
 
 void VulkanWindow::end_frame() {
@@ -206,21 +188,15 @@ void VulkanWindow::end_frame() {
     present_info.pResults = nullptr;
 
     res = vkQueuePresentKHR(present_queue, &present_info);
-    if (res == VK_ERROR_OUT_OF_DATE_KHR) { // Resize will be dealt with by `resizeEvent`
-        requestUpdate();
+    if (res == VK_ERROR_OUT_OF_DATE_KHR) // Resize will be dealt with by `resizeEvent`
         return;
-    } else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
+    else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
         qFatal("VulkanWindow: Failed to present queue: %d", res);
     vulkanInstance()->presentQueued(this);
 
     frame_index = (frame_index + 1) % nr_frames_in_flight;
-    requestUpdate();
+    // requestUpdate();
 }
-
-// void VulkanWindow::physical_device_lost() {}
-
-// void VulkanWindow::logical_device_lost() {}
-
 
 void VulkanWindow::resolve_instance_extension_functions() {
     QVulkanInstance* instance = vulkanInstance();
