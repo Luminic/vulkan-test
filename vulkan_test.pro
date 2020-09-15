@@ -22,8 +22,10 @@ MOC_DIR = generated_files
 
 # Input
 HEADERS += VulkanRenderer.hpp \
-			VulkanWindow.hpp
+			VulkanWindow.hpp \
+			Shader.hpp
 
 SOURCES += main.cpp \
 			VulkanRenderer.cpp \
-			VulkanWindow.cpp
+			VulkanWindow.cpp \
+			Shader.cpp

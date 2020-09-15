@@ -14,7 +14,7 @@ class AbstractVulkanRenderer {
 public:
     virtual ~AbstractVulkanRenderer() {};
 
-    virtual void pre_init_resources(VulkanWindow* vulkan_window) {};
+    virtual void pre_init_resources(VulkanWindow*) {};
     virtual void init_resources() {};
     virtual void init_swap_chain_resources() {};
     virtual void release_swap_chain_resources() {};

@@ -17,12 +17,15 @@ public:
     void start_next_frame() override;
 
 private:
-    VulkanWindow* vulkan_window;
+    VulkanWindow* vulkan_window = nullptr;
 
     QVulkanFunctions* vkf = nullptr;
     QVulkanDeviceFunctions* vkdf = nullptr;
-
     VkDevice device = VK_NULL_HANDLE;
+
+    void create_graphics_pipeline();
+    VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+    VkPipeline graphics_pipeline = VK_NULL_HANDLE;
 };
 
 #endif
