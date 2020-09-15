@@ -55,11 +55,13 @@ OBJECTS_DIR   = generated_files/
 SOURCES       = main.cpp \
 		VulkanRenderer.cpp \
 		VulkanWindow.cpp \
-		Shader.cpp generated_files/moc_VulkanWindow.cpp
+		Shader.cpp \
+		Vertex.cpp generated_files/moc_VulkanWindow.cpp
 OBJECTS       = generated_files/main.o \
 		generated_files/VulkanRenderer.o \
 		generated_files/VulkanWindow.o \
 		generated_files/Shader.o \
+		generated_files/Vertex.o \
 		generated_files/moc_VulkanWindow.o
 DIST          = /usr/lib/qt/mkspecs/features/spec_pre.prf \
 		/usr/lib/qt/mkspecs/common/unix.conf \
@@ -209,10 +211,12 @@ DIST          = /usr/lib/qt/mkspecs/features/spec_pre.prf \
 		/usr/lib/qt/mkspecs/features/lex.prf \
 		vulkan_test.pro VulkanRenderer.hpp \
 		VulkanWindow.hpp \
-		Shader.hpp main.cpp \
+		Shader.hpp \
+		Vertex.hpp main.cpp \
 		VulkanRenderer.cpp \
 		VulkanWindow.cpp \
-		Shader.cpp
+		Shader.cpp \
+		Vertex.cpp
 QMAKE_TARGET  = vulkan_test
 DESTDIR       = 
 TARGET        = vulkan_test
@@ -534,8 +538,8 @@ distdir: FORCE
 	@test -d $(DISTDIR) || mkdir -p $(DISTDIR)
 	$(COPY_FILE) --parents $(DIST) $(DISTDIR)/
 	$(COPY_FILE) --parents /usr/lib/qt/mkspecs/features/data/dummy.cpp $(DISTDIR)/
-	$(COPY_FILE) --parents VulkanRenderer.hpp VulkanWindow.hpp Shader.hpp $(DISTDIR)/
-	$(COPY_FILE) --parents main.cpp VulkanRenderer.cpp VulkanWindow.cpp Shader.cpp $(DISTDIR)/
+	$(COPY_FILE) --parents VulkanRenderer.hpp VulkanWindow.hpp Shader.hpp Vertex.hpp $(DISTDIR)/
+	$(COPY_FILE) --parents main.cpp VulkanRenderer.cpp VulkanWindow.cpp Shader.cpp Vertex.cpp $(DISTDIR)/
 
 
 clean: compiler_clean 
@@ -597,7 +601,8 @@ generated_files/main.o: main.cpp VulkanWindow.hpp \
 
 generated_files/VulkanRenderer.o: VulkanRenderer.cpp VulkanRenderer.hpp \
 		VulkanWindow.hpp \
-		Shader.hpp
+		Shader.hpp \
+		Vertex.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/VulkanRenderer.o VulkanRenderer.cpp
 
 generated_files/VulkanWindow.o: VulkanWindow.cpp VulkanWindow.hpp
@@ -605,6 +610,9 @@ generated_files/VulkanWindow.o: VulkanWindow.cpp VulkanWindow.hpp
 
 generated_files/Shader.o: Shader.cpp Shader.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/Shader.o Shader.cpp
+
+generated_files/Vertex.o: Vertex.cpp Vertex.hpp
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/Vertex.o Vertex.cpp
 
 generated_files/moc_VulkanWindow.o: generated_files/moc_VulkanWindow.cpp 
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/moc_VulkanWindow.o generated_files/moc_VulkanWindow.cpp

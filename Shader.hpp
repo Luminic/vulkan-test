@@ -1,3 +1,6 @@
+#ifndef SHADER_HPP
+#define SHADER_HPP
+
 #include <QVulkanInstance>
 
 class ShaderModule {
@@ -20,3 +23,4 @@ private:
     QVulkanDeviceFunctions* vkdf = nullptr;
 };
 
+#endif

@@ -4,6 +4,19 @@
 #include <QFile>
 
 #include "Shader.hpp"
+#include "Vertex.hpp"
+
+const std::vector<Vertex> vertices = {
+    Vertex{glm::vec2(-0.5f, -0.5f), glm::vec3(1.0f,0.0f,0.0f)},
+    Vertex{glm::vec2( 0.5f, -0.5f), glm::vec3(0.0f,1.0f,0.0f)},
+    Vertex{glm::vec2( 0.5f,  0.5f), glm::vec3(0.0f,0.0f,1.0f)},
+    Vertex{glm::vec2(-0.5f,  0.5f), glm::vec3(1.0f,1.0f,1.0f)},
+};
+
+const std::vector<Index> indices = {
+    0, 1, 2,
+    2, 3, 0,
+};
 
 VulkanRenderer::VulkanRenderer() {
 
@@ -25,6 +38,8 @@ void VulkanRenderer::init_resources() {
     vkdf = vulkan_window->vulkanInstance()->deviceFunctions(device);
 
     create_graphics_pipeline();
+    create_vertex_buffer();
+    create_index_buffer();
 }
 
 void VulkanRenderer::init_swap_chain_resources() {
@@ -37,6 +52,16 @@ void VulkanRenderer::release_swap_chain_resources() {
 
 void VulkanRenderer::release_resources() {
     qDebug() << "release_resources";
+
+    vkdf->vkDestroyBuffer(device, vertex_buffer, nullptr);
+    vertex_buffer = VK_NULL_HANDLE;
+    vkdf->vkFreeMemory(device, vertex_buffer_memory, nullptr);
+    vertex_buffer_memory = VK_NULL_HANDLE;
+
+    vkdf->vkDestroyBuffer(device, index_buffer, nullptr);
+    index_buffer = VK_NULL_HANDLE;
+    vkdf->vkFreeMemory(device, index_buffer_memory, nullptr);
+    index_buffer_memory = VK_NULL_HANDLE;
 
     vkdf->vkDestroyPipeline(device, graphics_pipeline, nullptr);
     graphics_pipeline = VK_NULL_HANDLE;
@@ -84,10 +109,13 @@ void VulkanRenderer::start_next_frame() {
     render_pass_begin_info.pClearValues = &clear_value;
 
     vkdf->vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
     vkdf->vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-    vkdf->vkCmdDraw(command_buffer, 3, 1, 0, 0);
 
+    VkDeviceSize offsets[] = {0};
+    vkdf->vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkdf->vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, offsets);
+
+    vkdf->vkCmdDrawIndexed(command_buffer, indices.size(), 1, 0, 0, 0);
     vkdf->vkCmdEndRenderPass(command_buffer);
 
     vulkan_window->frame_ready();
@@ -105,41 +133,26 @@ void VulkanRenderer::create_graphics_pipeline() {
         fragment_shader_module.get_create_info(VK_SHADER_STAGE_FRAGMENT_BIT),
     };
 
+    auto binding_description = Vertex::get_binding_description();
+    auto attribute_descriptions = Vertex::get_attribute_descriptions();
+
     VkPipelineVertexInputStateCreateInfo vertex_input_info{};
     vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_info.vertexBindingDescriptionCount = 0;
-    vertex_input_info.pVertexBindingDescriptions = nullptr;
-    vertex_input_info.vertexAttributeDescriptionCount = 0;
-    vertex_input_info.pVertexAttributeDescriptions = nullptr;
+    vertex_input_info.vertexBindingDescriptionCount = 1;
+    vertex_input_info.pVertexBindingDescriptions = &binding_description;
+    vertex_input_info.vertexAttributeDescriptionCount = attribute_descriptions.size();
+    vertex_input_info.pVertexAttributeDescriptions = attribute_descriptions.data();
 
     VkPipelineInputAssemblyStateCreateInfo input_assembly_info{};
     input_assembly_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     input_assembly_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     input_assembly_info.primitiveRestartEnable = VK_FALSE;
 
-    // VkExtent2D extent = vulkan_window->get_image_extent();
-
-    // VkViewport viewport{};
-    // viewport.x = 0.0f;
-    // viewport.y = 0.0f;
-    // viewport.width = extent.width;
-    // viewport.height = extent.height;
-    // viewport.minDepth = 0.0f;
-    // viewport.maxDepth = 1.0f;
-
-    // qDebug() << "extent" << extent.width << extent.height;
-
-    // VkRect2D scissor{};
-    // scissor.offset = {0, 0};
-    // scissor.extent = extent;
-
     // Viewport & Scissor are dynamically set at runtime
     VkPipelineViewportStateCreateInfo viewport_info{};
     viewport_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
     viewport_info.viewportCount = 1;
-    // viewport_info.pViewports = &viewport;
     viewport_info.scissorCount = 1;
-    // viewport_info.pScissors = &scissor;
 
     VkPipelineRasterizationStateCreateInfo rasterization_info{};
     rasterization_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -215,4 +228,127 @@ void VulkanRenderer::create_graphics_pipeline() {
     res = vkdf->vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline);
     if (res != VK_SUCCESS)
         qFatal("Failed to create graphics pipeline: %d", res);
+}
+
+void VulkanRenderer::create_vertex_buffer() {
+    VkDeviceSize buffer_size = vertices.size() * sizeof(Vertex);
+
+    create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer, vertex_buffer_memory);
+    copy_data_to_buffer(vertex_buffer, vertices.data(), buffer_size);
+}
+
+void VulkanRenderer::create_index_buffer() {
+    VkDeviceSize buffer_size = indices.size() * sizeof(Index);
+
+    create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, index_buffer, index_buffer_memory);
+    copy_data_to_buffer(index_buffer, indices.data(), buffer_size);
+}
+
+VkCommandBuffer VulkanRenderer::begin_single_time_commands() {
+    VkCommandBufferAllocateInfo allocation_info{};
+    allocation_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocation_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocation_info.commandPool = vulkan_window->get_graphics_command_pool();
+    allocation_info.commandBufferCount = 1;
+
+    VkCommandBuffer command_buffer;
+    vkdf->vkAllocateCommandBuffers(device, &allocation_info, &command_buffer);
+
+    VkCommandBufferBeginInfo begin_info{};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkdf->vkBeginCommandBuffer(command_buffer, &begin_info);
+
+    return command_buffer;
+}
+
+void VulkanRenderer::end_single_time_commands(VkCommandBuffer command_buffer) {
+    vkdf->vkEndCommandBuffer(command_buffer);
+
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer;
+
+    VkFenceCreateInfo fence_create_info{};
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+    VkFence fence;
+    vkdf->vkCreateFence(device, &fence_create_info, nullptr, &fence);
+
+    vkdf->vkQueueSubmit(vulkan_window->get_graphics_queue(), 1, &submit_info, fence);
+
+    VkResult res = vkdf->vkWaitForFences(device, 1, &fence, VK_FALSE, fence_timeout);
+    if (res != VK_SUCCESS)
+        qWarning("Timeout waiting for fence: %d", res);
+    
+    vkdf->vkFreeCommandBuffers(device, vulkan_window->get_graphics_command_pool(), 1, &command_buffer);
+    vkdf->vkDestroyFence(device, fence, nullptr);
+}
+
+uint32_t VulkanRenderer::find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties) {
+    VkPhysicalDeviceMemoryProperties memory_properties;
+    vkf->vkGetPhysicalDeviceMemoryProperties(vulkan_window->get_physical_device(), &memory_properties);
+    for (uint32_t i=0; i<memory_properties.memoryTypeCount; i++) {
+        if (type_filter & (1 << i) && (memory_properties.memoryTypes[i].propertyFlags & properties) == properties)
+            return i;
+    }
+    qFatal("Failed to find suitable memory type");
+}
+
+void VulkanRenderer::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkBuffer& buffer, VkDeviceMemory& memory) {
+    VkBufferCreateInfo buffer_info{};
+    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_info.size = size;
+    buffer_info.usage = usage;
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkResult res = vkdf->vkCreateBuffer(device, &buffer_info, nullptr, &buffer);
+    if (res != VK_SUCCESS) {
+        qFatal("Failed to allocate memory for vertex buffer: %d", res);
+    }
+
+    VkMemoryRequirements memory_requirements;
+    vkdf->vkGetBufferMemoryRequirements(device, buffer, &memory_requirements);
+
+    VkMemoryAllocateInfo allocation_info{};
+    allocation_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocation_info.allocationSize = memory_requirements.size;
+    allocation_info.memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, memory_properties);
+
+    res = vkdf->vkAllocateMemory(device, &allocation_info, nullptr, &memory);
+    if (res != VK_SUCCESS) {
+        qFatal("Failed to allocate memory for vertex buffer: %d", res);
+    }
+
+    vkdf->vkBindBufferMemory(device, buffer, memory, 0);
+}
+
+void VulkanRenderer::copy_data_to_buffer(VkBuffer dst_buffer, const void* data, VkDeviceSize size) {
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+
+    create_buffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+    void* buffer_data;
+    vkdf->vkMapMemory(device, staging_buffer_memory, 0, size, 0, &buffer_data);
+    memcpy(buffer_data, data, size);
+    vkdf->vkUnmapMemory(device, staging_buffer_memory);
+
+    copy_buffer(staging_buffer, dst_buffer, size);
+
+    vkdf->vkDestroyBuffer(device, staging_buffer, nullptr);
+    vkdf->vkFreeMemory(device, staging_buffer_memory, nullptr);
+}
+
+void VulkanRenderer::copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
+    VkCommandBuffer command_buffer = begin_single_time_commands();
+
+    VkBufferCopy copy_region{};
+    copy_region.srcOffset = 0;
+    copy_region.dstOffset = 0;
+    copy_region.size = size;
+    vkdf->vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
+
+    end_single_time_commands(command_buffer);
 }
