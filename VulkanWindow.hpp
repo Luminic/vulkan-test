@@ -58,7 +58,7 @@ public:
     // Swap chain functions (only valid from `init_swap_chain_resources` to `release_swap_chain_resources`)
     //=====================================================================================================
 
-    // See: `get_nr_frames()`
+    // See: `get_nr_concurrent_frames()`
     uint32_t get_nr_concurrent_images() {return image_count;}
 
     // Get image size

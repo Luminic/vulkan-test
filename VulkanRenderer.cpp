@@ -37,6 +37,7 @@ void VulkanRenderer::init_resources() {
     vkf = vulkan_window->vulkanInstance()->functions();
     vkdf = vulkan_window->vulkanInstance()->deviceFunctions(device);
 
+    create_descriptor_set_layout();
     create_graphics_pipeline();
     create_vertex_buffer();
     create_index_buffer();
@@ -44,14 +45,32 @@ void VulkanRenderer::init_resources() {
 
 void VulkanRenderer::init_swap_chain_resources() {
     qDebug() << "init_swap_chain_resources";
+
+    // Shouldn't change but just in case
+    frame_resources.resize(vulkan_window->get_nr_concurrent_frames());
+    create_descriptor_pool();
+    create_uniform_buffers();
+    create_descriptor_sets();
 }
 
 void VulkanRenderer::release_swap_chain_resources() {
     qDebug() << "release_swap_chain_resources";
+    for (auto& frame_resource : frame_resources) {
+        vkdf->vkDestroyBuffer(device, frame_resource.uniform_buffer, nullptr);
+        frame_resource.uniform_buffer = VK_NULL_HANDLE;
+        vkdf->vkFreeMemory(device, frame_resource.uniform_buffer_memory, nullptr);
+        frame_resource.uniform_buffer_memory = VK_NULL_HANDLE;
+    }
+
+    vkdf->vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
+    descriptor_pool = VK_NULL_HANDLE;
 }
 
 void VulkanRenderer::release_resources() {
     qDebug() << "release_resources";
+
+    vkdf->vkDestroyDescriptorSetLayout(device, descriptor_set_layout, nullptr);
+    descriptor_set_layout = VK_NULL_HANDLE;
 
     vkdf->vkDestroyBuffer(device, vertex_buffer, nullptr);
     vertex_buffer = VK_NULL_HANDLE;
@@ -75,6 +94,9 @@ void VulkanRenderer::release_resources() {
 
 void VulkanRenderer::start_next_frame() {
     VkCommandBuffer command_buffer = vulkan_window->get_current_command_buffer();
+
+    uint32_t current_frame_index = vulkan_window->get_current_frame_index();
+    update_uniform_buffer(current_frame_index);
 
     static float green = 0.0f;
     green += 0.005f;
@@ -115,11 +137,30 @@ void VulkanRenderer::start_next_frame() {
     vkdf->vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
     vkdf->vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, offsets);
 
+    vkdf->vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &frame_resources[current_frame_index].descriptor_set, 0, nullptr);
     vkdf->vkCmdDrawIndexed(command_buffer, indices.size(), 1, 0, 0, 0);
     vkdf->vkCmdEndRenderPass(command_buffer);
 
     vulkan_window->frame_ready();
     vulkan_window->requestUpdate();
+}
+
+void VulkanRenderer::create_descriptor_set_layout() {
+    VkDescriptorSetLayoutBinding ubo_layout_binding{};
+    ubo_layout_binding.binding = 0;
+    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_layout_binding.descriptorCount = 1;
+    ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    ubo_layout_binding.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutCreateInfo layout_create_info{};
+    layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_create_info.bindingCount = 1;
+    layout_create_info.pBindings = &ubo_layout_binding;
+
+    VkResult res = vkdf->vkCreateDescriptorSetLayout(device, &layout_create_info, nullptr, &descriptor_set_layout);
+    if (res != VK_SUCCESS)
+        qFatal("Failed to create descriptor set layout: %d", res);
 }
 
 void VulkanRenderer::create_graphics_pipeline() {
@@ -200,7 +241,8 @@ void VulkanRenderer::create_graphics_pipeline() {
     
     VkPipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = 0;
+    pipeline_layout_info.setLayoutCount = 1;
+    pipeline_layout_info.pSetLayouts = &descriptor_set_layout;
     pipeline_layout_info.pushConstantRangeCount = 0;
 
     res = vkdf->vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &pipeline_layout);
@@ -242,6 +284,80 @@ void VulkanRenderer::create_index_buffer() {
 
     create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, index_buffer, index_buffer_memory);
     copy_data_to_buffer(index_buffer, indices.data(), buffer_size);
+}
+
+void VulkanRenderer::create_descriptor_pool() {
+    VkDescriptorPoolSize pool_size{};
+    pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    pool_size.descriptorCount = frame_resources.size();
+
+    VkDescriptorPoolCreateInfo pool_create_info{};
+    pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_create_info.poolSizeCount = 1;
+    pool_create_info.pPoolSizes = &pool_size;
+    pool_create_info.maxSets = frame_resources.size();
+
+    VkResult res = vkdf->vkCreateDescriptorPool(device, &pool_create_info, nullptr, &descriptor_pool);
+    if (res != VK_SUCCESS)
+        qFatal("Failed to create descriptor pool: %d", res);
+}
+
+void VulkanRenderer::create_uniform_buffers() {
+    VkDeviceSize buffer_size = sizeof(UniformBufferObject);
+
+    for (auto& frame_resource : frame_resources) {
+        create_buffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, frame_resource.uniform_buffer, frame_resource.uniform_buffer_memory);
+    }
+}
+
+void VulkanRenderer::create_descriptor_sets() {
+    VkDescriptorSetAllocateInfo allocation_info{};
+    allocation_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocation_info.descriptorPool = descriptor_pool;
+    allocation_info.descriptorSetCount = 1;
+    allocation_info.pSetLayouts = &descriptor_set_layout;
+
+    // std::vector<VkDescriptorSet> descriptor_sets(frame_resources.size());
+    // VkResult res = vkdf->vkAllocateDescriptorSets(device, &allocation_info, descriptor_sets.data());
+    // if (res != VK_SUCCESS)
+    //     qFatal();
+
+    for (auto& frame_resource : frame_resources) {
+        VkResult res = vkdf->vkAllocateDescriptorSets(device, &allocation_info, &frame_resource.descriptor_set);
+        if (res != VK_SUCCESS)
+            qFatal("Failed to alocate descriptor set: %d", res);
+
+        VkDescriptorBufferInfo buffer_info{};
+        buffer_info.buffer = frame_resource.uniform_buffer;
+        buffer_info.offset = 0;
+        buffer_info.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet descriptor_write{};
+        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_write.dstSet = frame_resource.descriptor_set;
+        descriptor_write.dstBinding = 0;
+        descriptor_write.dstArrayElement = 0;
+        descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptor_write.descriptorCount = 1;
+        descriptor_write.pBufferInfo = &buffer_info;
+        descriptor_write.pImageInfo = nullptr;
+        descriptor_write.pTexelBufferView = nullptr;
+
+        vkdf->vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, nullptr);
+    }
+}
+
+void VulkanRenderer::update_uniform_buffer(uint32_t current_frame_index) {
+    static float angle = 1.0f;
+    angle += 0.025f;
+    ubo.model = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f,1.0f,0.0f));
+    ubo.view = glm::lookAt(glm::vec3(2.0f,2.0f,2.0f), glm::vec3(0.0f,0.0f,0.0f), glm::vec3(0.0f,1.0f,0.0f));
+    ubo.projection = glm::perspective(glm::radians(45.0f), vulkan_window->width()/float(vulkan_window->height()), 0.1f, 10.0f);
+
+    void* data;
+    vkdf->vkMapMemory(device, frame_resources[current_frame_index].uniform_buffer_memory, 0, sizeof(ubo), 0, &data);
+    memcpy(data, &ubo, sizeof(ubo));
+    vkdf->vkUnmapMemory(device, frame_resources[current_frame_index].uniform_buffer_memory);
 }
 
 VkCommandBuffer VulkanRenderer::begin_single_time_commands() {
