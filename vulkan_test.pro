@@ -21,13 +21,15 @@ MOC_DIR = generated_files
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 # Input
-HEADERS += VulkanRenderer.hpp \
+HEADERS += VulkanFunctions.hpp \
 			VulkanWindow.hpp \
+			VulkanRenderer.hpp \
 			Shader.hpp \
 			Vertex.hpp
 
 SOURCES += main.cpp \
-			VulkanRenderer.cpp \
+			VulkanFunctions.cpp \
 			VulkanWindow.cpp \
+			VulkanRenderer.cpp \
 			Shader.cpp \
 			Vertex.cpp

@@ -1,10 +1,12 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(location = 0) in vec2 i_position;
-layout(location = 1) in vec3 i_color;
+layout(location = 0) in vec2 a_position;
+layout(location = 1) in vec3 a_color;
+layout(location = 2) in vec2 a_tex_coord;
 
 layout(location = 0) out vec3 v_color;
+layout(location = 1) out vec2 v_tex_coord;
 
 layout(binding=0) uniform MVP_UniformBufferObject {
     mat4 model;
@@ -13,7 +15,8 @@ layout(binding=0) uniform MVP_UniformBufferObject {
 } mvp_ubo;
 
 void main() {
-    vec4 position = mvp_ubo.projection*mvp_ubo.view*mvp_ubo.model * vec4(i_position, 0.0, 1.0);
+    vec4 position = mvp_ubo.projection*mvp_ubo.view*mvp_ubo.model * vec4(a_position, 0.0, 1.0);
     gl_Position = vec4(position.x, -position.y, position.zw);
-    v_color = i_color;
+    v_color = a_color;
+    v_tex_coord = vec2(a_tex_coord.x, 1.0f-a_tex_coord.y);
 }

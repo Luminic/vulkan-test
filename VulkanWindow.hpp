@@ -8,6 +8,8 @@
 #include <vector>
 #include <array>
 
+#include "VulkanFunctions.hpp"
+
 class VulkanWindow;
 
 class AbstractVulkanRenderer {
@@ -33,17 +35,32 @@ public:
     constexpr uint32_t get_nr_concurrent_frames() {return nr_frames_in_flight;}
 
 
-    // Pre-init functions (only valid in `pre_init_resources`)
+    // Pre-init functions (only valid before `init_resources`. Usually used in `pre_init_resources`)
     //========================================================
 
-    // TODO
+    typedef std::function<int (VkPhysicalDevice device, int window_rating)> PhysicalDeviceRater;
+    // Rate physical device
+    // Physical devices not suitable for the window will be discarded before reaching `get_physical_device_rating`
+    // The user provided rating will be the final rating (the user chooses how much the initial `window_rating` matters)
+    // It is recommended to only add to the score (or return 0 if the device is not suitable).
+    // The highest rated device will be chosen as the VkPhysicalDevice. It is recommended to check and make sure this device has the requested features
+    void set_physical_device_rater(PhysicalDeviceRater pdr) {physical_device_rater=pdr;}
+
+    // Request the given VkPhysicalDeviceFeatures
+    // If a feature isn't supported it will be ignored
+    // If you want to weigh devices supporting the feature more highly you must use `set_physical_device_rater` to rate it more highly yourself
+    void request_physical_device_features(const VkPhysicalDeviceFeatures& pdf) {requested_physical_device_features=pdf;}
 
 
     // Resource functions (only valid from `init_resources` to `release_resources`)
     //=============================================================================
 
-    VkPhysicalDevice get_physical_device() {return physical_device;}
-    VkDevice get_device() {return device;}
+    VulkanData get_vulkan_data() {return vkd;}
+
+    VkPhysicalDevice get_physical_device() {return vkd.physical_device;}
+    VkDevice get_device() {return vkd.device;}
+
+    VkPhysicalDeviceFeatures get_enabled_physical_device_features() {return physical_device_features;}
     
     VkFormat get_color_format() {return swap_chain_surface_format.format;}
     VkColorSpaceKHR get_color_space() {return swap_chain_surface_format.colorSpace;}
@@ -120,12 +137,17 @@ private:
 
     AbstractVulkanRenderer* vulkan_renderer;
 
+    // Pre-init Resources (only valid before `init_resources`. In practice: set from `pre_init_resources`)
+    //====================================================================================================
+
+    PhysicalDeviceRater physical_device_rater = nullptr;
+    VkPhysicalDeviceFeatures requested_physical_device_features{};
+
 
     // Resource Initialization (only valid from `init_resources` to `release_resources`)
     //==================================================================================
 
-    QVulkanFunctions* vkf = nullptr;
-    QVulkanDeviceFunctions* vkdf = nullptr;
+    VulkanData vkd{};
 
     void create_surface();
     VkSurfaceKHR surface = VK_NULL_HANDLE;
@@ -152,10 +174,9 @@ private:
     bool check_device_extension_support(VkPhysicalDevice device);
     int rate_device_suitability(VkPhysicalDevice device);
     void pick_physical_device();
-    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
 
     void create_logical_device();
-    VkDevice device = VK_NULL_HANDLE;
+    VkPhysicalDeviceFeatures physical_device_features{};
 
     void create_queues();
     VkQueue graphics_queue = VK_NULL_HANDLE;

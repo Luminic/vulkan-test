@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "VulkanFunctions.hpp"
 #include "VulkanWindow.hpp"
 
 struct UniformBufferObject {
@@ -29,9 +30,8 @@ public:
 private:
     VulkanWindow* vulkan_window = nullptr;
 
-    QVulkanFunctions* vkf = nullptr;
-    QVulkanDeviceFunctions* vkdf = nullptr;
-    VkDevice device = VK_NULL_HANDLE;
+    VulkanData vkd{};
+    VkPhysicalDeviceFeatures enabled_device_features{};
 
     void create_descriptor_set_layout();
     VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
@@ -48,6 +48,15 @@ private:
     VkBuffer index_buffer = VK_NULL_HANDLE;
     VkDeviceMemory index_buffer_memory = VK_NULL_HANDLE;
 
+    void create_texture_image();
+    VkImage texture_image = VK_NULL_HANDLE;
+    VkDeviceMemory texture_image_memory = VK_NULL_HANDLE;
+
+    void create_texture_image_view();
+    VkImageView texture_image_view = VK_NULL_HANDLE;
+
+    void create_texture_sampler();
+    VkSampler texture_sampler = VK_NULL_HANDLE;
     
     void create_descriptor_pool();
     VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
@@ -65,17 +74,12 @@ private:
     UniformBufferObject ubo{};
 
 
-    VkCommandBuffer begin_single_time_commands();
-    void end_single_time_commands(VkCommandBuffer command_buffer);
-
-    uint32_t find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties);
-
     void create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkBuffer& buffer, VkDeviceMemory& memory);
     void copy_data_to_buffer(VkBuffer dst_buffer, const void* data, VkDeviceSize size);
     void copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size);
 
     // One second fence timeout
-    const int fence_timeout = 1'000'000'000;
+    const uint64_t fence_timeout = 1'000'000'000;
 };
 
 #endif

@@ -25,21 +25,22 @@ VulkanWindow::~VulkanWindow() {
 void VulkanWindow::init_resources() {
     vulkan_renderer->pre_init_resources(this);
 
-    vkf = vulkanInstance()->functions();
+    vkd.instance = vulkanInstance();
+    vkd.vkf = vkd.instance->functions();
     resolve_instance_extension_functions();
 
     create_surface();
     pick_physical_device();
     create_logical_device();
 
-    vkdf = vulkanInstance()->deviceFunctions(device);
+    vkd.vkdf = vkd.instance->deviceFunctions(vkd.device);
     resolve_device_extension_functions();
 
     create_queues();
     create_command_pool();
 
     // Figure these out here because we want the renderpass to be available at init_resources
-    swap_chain_support_details = query_swap_chain_support_details(physical_device);
+    swap_chain_support_details = query_swap_chain_support_details(vkd.physical_device);
     swap_chain_surface_format = choose_swap_surface_format(swap_chain_support_details.formats);
     // (So the pipeline can be created in init_resources and doesn't have to be defered to init_swap_chain_resources)
     create_default_render_pass();
@@ -50,7 +51,7 @@ void VulkanWindow::init_resources() {
 
 void VulkanWindow::init_swap_chain_resources() {
     // Update swap_chain support details
-    swap_chain_support_details = query_swap_chain_support_details(physical_device);
+    swap_chain_support_details = query_swap_chain_support_details(vkd.physical_device);
 
     create_swap_chain();
     get_swap_chain_images();
@@ -64,33 +65,33 @@ void VulkanWindow::init_swap_chain_resources() {
 }
 
 void VulkanWindow::release_swap_chain_resources() {
-    vkdf->vkDeviceWaitIdle(device);
+    vkd.vkdf->vkDeviceWaitIdle(vkd.device);
 
     status = Status::Device_Ready;
     vulkan_renderer->release_swap_chain_resources();
 
     for (auto& frame_resource : frame_resources) {
-        vkdf->vkDestroySemaphore(device, frame_resource.image_available_semaphore, nullptr);
+        vkd.vkdf->vkDestroySemaphore(vkd.device, frame_resource.image_available_semaphore, nullptr);
         frame_resource.image_available_semaphore = VK_NULL_HANDLE;
-        vkdf->vkDestroySemaphore(device, frame_resource.render_finished_semaphore, nullptr);
+        vkd.vkdf->vkDestroySemaphore(vkd.device, frame_resource.render_finished_semaphore, nullptr);
         frame_resource.render_finished_semaphore = VK_NULL_HANDLE;
-        vkdf->vkDestroyFence(device, frame_resource.fence, nullptr);
+        vkd.vkdf->vkDestroyFence(vkd.device, frame_resource.fence, nullptr);
         frame_resource.fence = VK_NULL_HANDLE;
     }
 
     for (auto& image_resource : image_resources) {
-        vkdf->vkDestroyImageView(device, image_resource.image_view, nullptr);
+        vkd.vkdf->vkDestroyImageView(vkd.device, image_resource.image_view, nullptr);
         image_resource.image_view = VK_NULL_HANDLE;
-        vkdf->vkDestroyFramebuffer(device, image_resource.framebuffer, nullptr);
+        vkd.vkdf->vkDestroyFramebuffer(vkd.device, image_resource.framebuffer, nullptr);
         image_resource.framebuffer = VK_NULL_HANDLE;
-        vkdf->vkFreeCommandBuffers(device, command_pool, 1, &image_resource.command_buffer);
+        vkd.vkdf->vkFreeCommandBuffers(vkd.device, command_pool, 1, &image_resource.command_buffer);
         image_resource.command_buffer = VK_NULL_HANDLE;
         // The fence should be the same fence as one in frame_resources so no need
         // to call vkDestroyFence; just reset the handle
         image_resource.fence = VK_NULL_HANDLE;
     }
 
-    vkDestroySwapchainKHR(device, swap_chain, nullptr);
+    vkDestroySwapchainKHR(vkd.device, swap_chain, nullptr);
     swap_chain = VK_NULL_HANDLE;
 }
 
@@ -98,17 +99,17 @@ void VulkanWindow::release_resources() {
     status = Status::Uninitialized;
     vulkan_renderer->release_resources();
 
-    vkdf->vkDestroyCommandPool(device, command_pool, nullptr);
+    vkd.vkdf->vkDestroyCommandPool(vkd.device, command_pool, nullptr);
     command_pool = VK_NULL_HANDLE;
 
-    vkdf->vkDestroyRenderPass(device, default_render_pass, nullptr);
+    vkd.vkdf->vkDestroyRenderPass(vkd.device, default_render_pass, nullptr);
     default_render_pass = VK_NULL_HANDLE;
 
-    vkdf->vkDestroyDevice(device, nullptr);
-    device = VK_NULL_HANDLE;
+    vkd.vkdf->vkDestroyDevice(vkd.device, nullptr);
+    vkd.device = VK_NULL_HANDLE;
 
-    vkf = nullptr;
-    vkdf = nullptr;
+    vkd.vkf = nullptr;
+    vkd.vkdf = nullptr;
 }
 
 void VulkanWindow::begin_frame() {
@@ -121,9 +122,9 @@ void VulkanWindow::begin_frame() {
     FrameResources& frame_resource = frame_resources[frame_index];
 
     // qDebug() << "begin_frame";
-    vkdf->vkWaitForFences(device, 1, &frame_resource.fence, VK_TRUE, -1);
+    vkd.vkdf->vkWaitForFences(vkd.device, 1, &frame_resource.fence, VK_TRUE, -1);
 
-    res = vkAcquireNextImageKHR(device, swap_chain, -1, frame_resources[frame_index].image_available_semaphore, VK_NULL_HANDLE, &image_index);
+    res = vkAcquireNextImageKHR(vkd.device, swap_chain, -1, frame_resources[frame_index].image_available_semaphore, VK_NULL_HANDLE, &image_index);
     if (res == VK_ERROR_OUT_OF_DATE_KHR) // Resize will be dealt with by `resizeEvent`
         return;
     else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
@@ -133,11 +134,11 @@ void VulkanWindow::begin_frame() {
 
     // Make sure previous images & frames have finished using their resources
     if (image_resource.fence != VK_NULL_HANDLE) {
-        vkdf->vkWaitForFences(device, 1, &image_resource.fence, VK_TRUE, -1);
+        vkd.vkdf->vkWaitForFences(vkd.device, 1, &image_resource.fence, VK_TRUE, -1);
     }
     image_resource.fence = frame_resource.fence;
 
-    vkdf->vkFreeCommandBuffers(device, command_pool, 1, &image_resource.command_buffer);
+    vkd.vkdf->vkFreeCommandBuffers(vkd.device, command_pool, 1, &image_resource.command_buffer);
     create_command_buffer(image_resource.command_buffer);
 
     VkCommandBufferBeginInfo begin_info{};
@@ -145,7 +146,7 @@ void VulkanWindow::begin_frame() {
     begin_info.flags = 0;
     begin_info.pInheritanceInfo = nullptr;
 
-    res = vkdf->vkBeginCommandBuffer(image_resource.command_buffer, &begin_info);
+    res = vkd.vkdf->vkBeginCommandBuffer(image_resource.command_buffer, &begin_info);
     if (res != VK_SUCCESS)
         qFatal("VulkanWindow: Failed to begin recording framebuffer: %d", res);
 
@@ -157,11 +158,11 @@ void VulkanWindow::end_frame() {
     FrameResources& frame_resource = frame_resources[frame_index];
     VkResult res;
 
-    res = vkdf->vkEndCommandBuffer(image_resource.command_buffer);
+    res = vkd.vkdf->vkEndCommandBuffer(image_resource.command_buffer);
     if (res != VK_SUCCESS)
         qFatal("VulkanWindow: Failed to end recording framebuffer: %d", res);
 
-    vkdf->vkResetFences(device, 1, &frame_resource.fence);
+    vkd.vkdf->vkResetFences(vkd.device, 1, &frame_resource.fence);
 
     VkSubmitInfo submit_info{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -174,7 +175,7 @@ void VulkanWindow::end_frame() {
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &frame_resource.render_finished_semaphore;
 
-    res = vkdf->vkQueueSubmit(graphics_queue, 1, &submit_info, frame_resource.fence);
+    res = vkd.vkdf->vkQueueSubmit(graphics_queue, 1, &submit_info, frame_resource.fence);
     if (res != VK_SUCCESS)
         qFatal("VulkanWindow: Failed to submit queue: %d", res);
 
@@ -216,19 +217,19 @@ void VulkanWindow::resolve_instance_extension_functions() {
 
 void VulkanWindow::resolve_device_extension_functions() {
     vkCreateSwapchainKHR = reinterpret_cast<PFN_vkCreateSwapchainKHR>(
-        vkf->vkGetDeviceProcAddr(device, "vkCreateSwapchainKHR")
+        vkd.vkf->vkGetDeviceProcAddr(vkd.device, "vkCreateSwapchainKHR")
     );
     vkDestroySwapchainKHR = reinterpret_cast<PFN_vkDestroySwapchainKHR>(
-        vkf->vkGetDeviceProcAddr(device, "vkDestroySwapchainKHR")
+        vkd.vkf->vkGetDeviceProcAddr(vkd.device, "vkDestroySwapchainKHR")
     );
     vkGetSwapchainImagesKHR = reinterpret_cast<PFN_vkGetSwapchainImagesKHR>(
-        vkf->vkGetDeviceProcAddr(device, "vkGetSwapchainImagesKHR")
+        vkd.vkf->vkGetDeviceProcAddr(vkd.device, "vkGetSwapchainImagesKHR")
     );
     vkAcquireNextImageKHR = reinterpret_cast<PFN_vkAcquireNextImageKHR>(
-        vkf->vkGetDeviceProcAddr(device, "vkAcquireNextImageKHR")
+        vkd.vkf->vkGetDeviceProcAddr(vkd.device, "vkAcquireNextImageKHR")
     );
     vkQueuePresentKHR = reinterpret_cast<PFN_vkQueuePresentKHR>(
-        vkf->vkGetDeviceProcAddr(device, "vkQueuePresentKHR")
+        vkd.vkf->vkGetDeviceProcAddr(vkd.device, "vkQueuePresentKHR")
     );
 }
 
@@ -304,9 +305,9 @@ VulkanWindow::QueueFamilyIndices VulkanWindow::find_queue_families(VkPhysicalDev
     QueueFamilyIndices indices;
 
     uint32_t queue_family_count = 0;
-    vkf->vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
+    vkd.vkf->vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
     std::vector<VkQueueFamilyProperties> queue_family_properties(queue_family_count);
-    vkf->vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_family_properties.data());
+    vkd.vkf->vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_family_properties.data());
 
 
     for (uint32_t i=0; i<queue_family_properties.size(); i++) {
@@ -324,9 +325,9 @@ VulkanWindow::QueueFamilyIndices VulkanWindow::find_queue_families(VkPhysicalDev
 
 bool VulkanWindow::check_device_extension_support(VkPhysicalDevice device) {
     uint32_t extension_count;
-    vkf->vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
+    vkd.vkf->vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
     std::vector<VkExtensionProperties> available_extensions(extension_count);
-    vkf->vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.data());
+    vkd.vkf->vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.data());
 
     std::set<std::string> required_extensions(device_extensions.begin(), device_extensions.end());
 
@@ -351,28 +352,31 @@ int VulkanWindow::rate_device_suitability(VkPhysicalDevice device) {
     if (swap_chain_support_details.formats.empty() && swap_chain_support_details.present_modes.empty())
         return 0;
 
+    if (physical_device_rater != nullptr)
+        return physical_device_rater(device, score);
+
     return score;
 }
 
 void VulkanWindow::pick_physical_device() {
     uint32_t device_count = 0;
-    vkf->vkEnumeratePhysicalDevices(vulkanInstance()->vkInstance(), &device_count, nullptr);
+    vkd.vkf->vkEnumeratePhysicalDevices(vulkanInstance()->vkInstance(), &device_count, nullptr);
     std::vector<VkPhysicalDevice> devices(device_count);
-    vkf->vkEnumeratePhysicalDevices(vulkanInstance()->vkInstance(), &device_count, devices.data());
+    vkd.vkf->vkEnumeratePhysicalDevices(vulkanInstance()->vkInstance(), &device_count, devices.data());
 
     int best_score = 0;
     for (const auto& device : devices) {
         if (rate_device_suitability(device) > best_score) {
-            physical_device = device;
+            vkd.physical_device = device;
         }
     }
 
-    if (physical_device == VK_NULL_HANDLE)
+    if (vkd.physical_device == VK_NULL_HANDLE)
         qFatal("VulkanWindow: Unable to find suitable GPU");
 }
 
 void VulkanWindow::create_logical_device() {
-    queue_families = find_queue_families(physical_device);
+    queue_families = find_queue_families(vkd.physical_device);
 
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
 
@@ -392,13 +396,25 @@ void VulkanWindow::create_logical_device() {
         queue_create_infos.push_back(queue_create_info);
     }
 
-    VkPhysicalDeviceFeatures device_features{};
+    physical_device_features = requested_physical_device_features;
+    VkPhysicalDeviceFeatures supported_device_features;
+    vkd.vkf->vkGetPhysicalDeviceFeatures(vkd.physical_device, &supported_device_features);
+
+    // Super unsafe but the only way I know to disable unsupported features without hardcoding an if for each feature
+    // Hopefully messing up whatever padding the compiler puts (if the compiler does put padding) doesn't cause errors
+    unsigned char* supported_device_features_memory = reinterpret_cast<unsigned char*>(&supported_device_features);
+    unsigned char* device_features_memory = reinterpret_cast<unsigned char*>(&physical_device_features);
+    if (sizeof(VkPhysicalDeviceFeatures) != 55*4)
+        qWarning("VulkanWndow: Unexpected VkPhysicalDeviceFeatures size. This might be because more features were added or because padding was added by the compiler.");
+    for (size_t i=0; i<sizeof(VkPhysicalDeviceFeatures); i++) {
+        device_features_memory[i] &= supported_device_features_memory[i];
+    }
 
     VkDeviceCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     create_info.queueCreateInfoCount = queue_create_infos.size();
     create_info.pQueueCreateInfos = queue_create_infos.data();
-    create_info.pEnabledFeatures = &device_features;
+    create_info.pEnabledFeatures = &physical_device_features;
 
     create_info.enabledExtensionCount = device_extensions.size();
     create_info.ppEnabledExtensionNames = device_extensions.data();
@@ -407,14 +423,14 @@ void VulkanWindow::create_logical_device() {
     create_info.enabledLayerCount = 0;
     create_info.ppEnabledLayerNames = nullptr;
 
-    VkResult res = vkf->vkCreateDevice(physical_device, &create_info, nullptr, &device);
+    VkResult res = vkd.vkf->vkCreateDevice(vkd.physical_device, &create_info, nullptr, &vkd.device);
     if (res != VK_SUCCESS)
         qFatal("VulkanWindow: Failed to create logical device: %d", res);
 }
 
 void VulkanWindow::create_queues() {
-    vkdf->vkGetDeviceQueue(device, queue_families.graphics_family.value(), 0, &graphics_queue);
-    vkdf->vkGetDeviceQueue(device, queue_families.present_family.value(), 0, &present_queue);
+    vkd.vkdf->vkGetDeviceQueue(vkd.device, queue_families.graphics_family.value(), 0, &graphics_queue);
+    vkd.vkdf->vkGetDeviceQueue(vkd.device, queue_families.present_family.value(), 0, &present_queue);
 }
 
 void VulkanWindow::create_command_pool() {
@@ -423,7 +439,7 @@ void VulkanWindow::create_command_pool() {
     pool_info.queueFamilyIndex = queue_families.graphics_family.value();
     pool_info.flags = 0;
 
-    VkResult res = vkdf->vkCreateCommandPool(device, &pool_info, nullptr, &command_pool);
+    VkResult res = vkd.vkdf->vkCreateCommandPool(vkd.device, &pool_info, nullptr, &command_pool);
     if (res != VK_SUCCESS)
         qFatal("Failed to create command pool: %d", res);
 }
@@ -474,7 +490,7 @@ void VulkanWindow::create_default_render_pass() {
     render_pass_create_info.dependencyCount = 1;
     render_pass_create_info.pDependencies = &subpass_dependency;
 
-    VkResult res = vkdf->vkCreateRenderPass(device, &render_pass_create_info, nullptr, &default_render_pass);
+    VkResult res = vkd.vkdf->vkCreateRenderPass(vkd.device, &render_pass_create_info, nullptr, &default_render_pass);
     if (res != VK_SUCCESS)
         qFatal("VulkanWindow: Failed to create default render pass: %d", res);
 }
@@ -539,15 +555,15 @@ void VulkanWindow::create_swap_chain() {
     create_info.clipped = VK_TRUE;
     create_info.oldSwapchain = VK_NULL_HANDLE;
 
-    VkResult res = vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain);
+    VkResult res = vkCreateSwapchainKHR(vkd.device, &create_info, nullptr, &swap_chain);
     if (res != VK_SUCCESS)
         qFatal("VulkanWindow: Failed to create swapchain: %d", res);
 }
 
 void VulkanWindow::get_swap_chain_images() {
-    vkGetSwapchainImagesKHR(device, swap_chain, &image_count, nullptr);
+    vkGetSwapchainImagesKHR(vkd.device, swap_chain, &image_count, nullptr);
     std::vector<VkImage> swap_chain_images(image_count);
-    vkGetSwapchainImagesKHR(device, swap_chain, &image_count, swap_chain_images.data());
+    vkGetSwapchainImagesKHR(vkd.device, swap_chain, &image_count, swap_chain_images.data());
 
     image_resources.resize(image_count);
     for (size_t i=0; i<swap_chain_images.size(); i++) {
@@ -576,7 +592,7 @@ void VulkanWindow::create_image_views() {
     for (size_t i=0; i<image_resources.size(); i++) {
         create_info.image = image_resources[i].image;
 
-        VkResult res = vkdf->vkCreateImageView(device, &create_info, nullptr, &image_resources[i].image_view);
+        VkResult res = vkd.vkdf->vkCreateImageView(vkd.device, &create_info, nullptr, &image_resources[i].image_view);
         if (res != VK_SUCCESS)
             qFatal("Failed to create image view: %d", res);
     }
@@ -597,7 +613,7 @@ void VulkanWindow::create_frame_buffers() {
         VkImageView attachments[] = {image_resource.image_view};
         framebuffer_create_info.pAttachments = attachments;
 
-        VkResult res = vkdf->vkCreateFramebuffer(device, &framebuffer_create_info, nullptr, &image_resource.framebuffer);
+        VkResult res = vkd.vkdf->vkCreateFramebuffer(vkd.device, &framebuffer_create_info, nullptr, &image_resource.framebuffer);
         if (res != VK_SUCCESS)
             qFatal("VulkanWindow: Failed to create framebuffer: %d", res);
     }
@@ -614,15 +630,15 @@ void VulkanWindow::create_sync_objects() {
     fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     for (auto& frame_resource : frame_resources) {
-        res = vkdf->vkCreateSemaphore(device, &semaphore_create_info, nullptr, &frame_resource.image_available_semaphore);
+        res = vkd.vkdf->vkCreateSemaphore(vkd.device, &semaphore_create_info, nullptr, &frame_resource.image_available_semaphore);
         if (res != VK_SUCCESS) 
             qFatal("VulkanWindow: Failed to create semaphore: %d", res);
 
-        res = vkdf->vkCreateSemaphore(device, &semaphore_create_info, nullptr, &frame_resource.render_finished_semaphore);
+        res = vkd.vkdf->vkCreateSemaphore(vkd.device, &semaphore_create_info, nullptr, &frame_resource.render_finished_semaphore);
         if (res != VK_SUCCESS) 
             qFatal("VulkanWindow: Failed to create semaphore: %d", res);
 
-        res = vkdf->vkCreateFence(device, &fence_create_info, nullptr, &frame_resource.fence);
+        res = vkd.vkdf->vkCreateFence(vkd.device, &fence_create_info, nullptr, &frame_resource.fence);
         if (res != VK_SUCCESS)
             qFatal("VulkanWindow: Failed to create fence: %d", res);
     }
@@ -635,7 +651,7 @@ void VulkanWindow::create_command_buffer(VkCommandBuffer& command_buffer) {
     allocation_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocation_info.commandBufferCount = 1;
 
-    VkResult res = vkdf->vkAllocateCommandBuffers(device, &allocation_info, &command_buffer);
+    VkResult res = vkd.vkdf->vkAllocateCommandBuffers(vkd.device, &allocation_info, &command_buffer);
     if (res != VK_SUCCESS)
         qFatal("VulkanWindow: Failed to allocate command buffer: %d", res);
 }
