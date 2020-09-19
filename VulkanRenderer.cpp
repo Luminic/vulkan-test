@@ -58,8 +58,8 @@ void VulkanRenderer::init_resources() {
     create_vertex_buffer();
     create_index_buffer();
     create_texture_image();
-    create_texture_image_view();
-    create_texture_sampler();
+    // create_texture_image_view();
+    // create_texture_sampler();
 }
 
 void VulkanRenderer::init_swap_chain_resources() {
@@ -88,16 +88,17 @@ void VulkanRenderer::release_swap_chain_resources() {
 void VulkanRenderer::release_resources() {
     qDebug() << "release_resources";
 
-    vkd.vkdf->vkDestroySampler(vkd.device, texture_sampler, nullptr);
-    texture_sampler = VK_NULL_HANDLE;
+    // vkd.vkdf->vkDestroySampler(vkd.device, texture_sampler, nullptr);
+    // texture_sampler = VK_NULL_HANDLE;
 
-    vkd.vkdf->vkDestroyImageView(vkd.device, texture_image_view, nullptr);
-    texture_image_view = VK_NULL_HANDLE;
+    // vkd.vkdf->vkDestroyImageView(vkd.device, texture_image_view, nullptr);
+    // texture_image_view = VK_NULL_HANDLE;
 
-    vkd.vkdf->vkDestroyImage(vkd.device, texture_image, nullptr);
-    texture_image = VK_NULL_HANDLE;
-    vkd.vkdf->vkFreeMemory(vkd.device, texture_image_memory, nullptr);
-    texture_image_memory = VK_NULL_HANDLE;
+    // vkd.vkdf->vkDestroyImage(vkd.device, texture_image, nullptr);
+    // texture_image = VK_NULL_HANDLE;
+    // vkd.vkdf->vkFreeMemory(vkd.device, texture_image_memory, nullptr);
+    // texture_image_memory = VK_NULL_HANDLE;
+    texture_image.destroy();
 
     vkd.vkdf->vkDestroyBuffer(vkd.device, vertex_buffer, nullptr);
     vertex_buffer = VK_NULL_HANDLE;
@@ -342,93 +343,30 @@ void VulkanRenderer::create_texture_image() {
     memcpy(data, qt_image.constBits(), qt_image.sizeInBytes());
     vkd.vkdf->vkUnmapMemory(vkd.device, staging_buffer_memory);
 
-    ImageCreateData icd = ImageCreateData::default_texture_image(qt_image.width(), qt_image.height());
+    Image::CreateData icd = Image::CreateData::default_texture_data(qt_image.width(), qt_image.height());
     icd.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    create_image(vkd, icd, texture_image, texture_image_memory);
+    texture_image.create(vkd, icd);
 
-    transition_image_layout(
-        vkd,
-        VK_FORMAT_R8G8B8A8_SRGB,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        texture_image,
-        vulkan_window->get_graphics_command_pool(),
-        vulkan_window->get_graphics_queue(),
-        fence_timeout
-    );
+    VkCommandPool command_pool = vulkan_window->get_graphics_command_pool();
+    VkCommandBuffer command_buffer = begin_single_time_commands(vkd, command_pool);
 
-    copy_buffer_to_image(
-        vkd,
-        staging_buffer,
-        texture_image,
-        qt_image.width(),
-        qt_image.height(),
-        vulkan_window->get_graphics_command_pool(),
-        vulkan_window->get_graphics_queue(),
-        fence_timeout
-    );
+    texture_image.transition_image_layout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, command_buffer);
+    texture_image.copy_buffer_to_image(staging_buffer, command_buffer);
+    texture_image.transition_image_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, command_buffer);
 
-    transition_image_layout(
-        vkd,
-        VK_FORMAT_R8G8B8A8_SRGB,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        texture_image,
-        vulkan_window->get_graphics_command_pool(),
-        vulkan_window->get_graphics_queue(),
-        fence_timeout
-    );
+    VkQueue queue = vulkan_window->get_graphics_queue();
+    end_single_time_commands(vkd, command_pool, queue, command_buffer, fence_timeout);
+
+    texture_image.create_view();
+    VkSamplerCreateInfo sci = Image::default_texture_sampler_create_info(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, enabled_device_features.samplerAnisotropy);
+    sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    texture_image.create_sampler(sci);
 
     vkd.vkdf->vkDestroyBuffer(vkd.device, staging_buffer, nullptr);
     vkd.vkdf->vkFreeMemory(vkd.device, staging_buffer_memory, nullptr);
 }
 
-void VulkanRenderer::create_texture_image_view() {
-    VkImageViewCreateInfo view_info{};
-    view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    view_info.image = texture_image;
-    view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    view_info.format = VK_FORMAT_R8G8B8A8_SRGB;
-    view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    view_info.subresourceRange.baseMipLevel = 0;
-    view_info.subresourceRange.levelCount = 1;
-    view_info.subresourceRange.baseArrayLayer = 0;
-    view_info.subresourceRange.layerCount = 1;
-
-    VkResult res = vkd.vkdf->vkCreateImageView(vkd.device, &view_info, nullptr, &texture_image_view);
-    if (res != VK_SUCCESS)
-        qFatal("Failed to create image view: %d", res);
-}
-
-void VulkanRenderer::create_texture_sampler() {
-    VkSamplerCreateInfo create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    create_info.magFilter = VK_FILTER_LINEAR;
-    create_info.minFilter = VK_FILTER_LINEAR;
-    create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    create_info.anisotropyEnable = enabled_device_features.samplerAnisotropy? VK_TRUE : VK_FALSE;
-    create_info.maxAnisotropy = 16.0f;
-    create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-    create_info.unnormalizedCoordinates = VK_FALSE;
-    create_info.compareEnable = VK_FALSE;
-    create_info.compareOp = VK_COMPARE_OP_ALWAYS;
-    create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    create_info.mipLodBias = 0.0f;
-    create_info.minLod = 0.0f;
-    create_info.maxLod = 0.0f;
-
-    VkResult res = vkd.vkdf->vkCreateSampler(vkd.device, &create_info, nullptr, &texture_sampler);
-    if (res != VK_SUCCESS)
-        qFatal("Failed to create texture sampler: %d", res);
-}
-
 void VulkanRenderer::create_descriptor_pool() {
-    // VkDescriptorPoolSize pool_size{};
-    // pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    // pool_size.descriptorCount = frame_resources.size();
-
     VkDescriptorPoolSize pool_sizes[] = {
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (uint32_t)frame_resources.size()},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)frame_resources.size()},
@@ -473,8 +411,8 @@ void VulkanRenderer::create_descriptor_sets() {
 
         VkDescriptorImageInfo image_info{};
         image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        image_info.imageView = texture_image_view;
-        image_info.sampler = texture_sampler;
+        image_info.imageView = texture_image.get_vk_image_view();
+        image_info.sampler = texture_image.get_vk_sampler();
 
         VkWriteDescriptorSet descriptor_writes[2] = {};
 
@@ -499,7 +437,7 @@ void VulkanRenderer::create_descriptor_sets() {
 }
 
 void VulkanRenderer::update_uniform_buffer(uint32_t current_frame_index) {
-    static float angle = 1.0f;
+    static float angle = 0.0f;
     angle += 0.025f;
     ubo.model = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f,1.0f,0.0f));
     ubo.view = glm::lookAt(glm::vec3(2.0f,2.0f,2.0f), glm::vec3(0.0f,0.0f,0.0f), glm::vec3(0.0f,1.0f,0.0f));

@@ -7,6 +7,8 @@
 #include <string>
 #include <algorithm>
 
+#include "Image.hpp"
+
 VulkanWindow::VulkanWindow(AbstractVulkanRenderer* vulkan_renderer, QWindow* parent) :
     QWindow(parent),
     vulkan_renderer(vulkan_renderer)
@@ -575,24 +577,8 @@ void VulkanWindow::create_image_views() {
     // swap_chain_image_views.resize(image_count);
     Q_ASSERT_X(image_resources.size() == image_count, "Creating image views", "image_resources has incorrect size");
 
-    VkImageViewCreateInfo create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    create_info.format = swap_chain_surface_format.format;
-    create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-    create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    create_info.subresourceRange.baseMipLevel = 0;
-    create_info.subresourceRange.levelCount = 1;
-    create_info.subresourceRange.baseArrayLayer = 0;
-    create_info.subresourceRange.layerCount = 1;
-
     for (size_t i=0; i<image_resources.size(); i++) {
-        create_info.image = image_resources[i].image;
-
-        VkResult res = vkd.vkdf->vkCreateImageView(vkd.device, &create_info, nullptr, &image_resources[i].image_view);
+        VkResult res = Image::create_view(vkd, image_resources[i].image, swap_chain_surface_format.format, image_resources[i].image_view);
         if (res != VK_SUCCESS)
             qFatal("Failed to create image view: %d", res);
     }

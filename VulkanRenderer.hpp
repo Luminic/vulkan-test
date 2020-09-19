@@ -7,6 +7,7 @@
 
 #include "VulkanFunctions.hpp"
 #include "VulkanWindow.hpp"
+#include "Image.hpp"
 
 struct UniformBufferObject {
     glm::mat4 model;
@@ -49,14 +50,7 @@ private:
     VkDeviceMemory index_buffer_memory = VK_NULL_HANDLE;
 
     void create_texture_image();
-    VkImage texture_image = VK_NULL_HANDLE;
-    VkDeviceMemory texture_image_memory = VK_NULL_HANDLE;
-
-    void create_texture_image_view();
-    VkImageView texture_image_view = VK_NULL_HANDLE;
-
-    void create_texture_sampler();
-    VkSampler texture_sampler = VK_NULL_HANDLE;
+    Image texture_image{};
     
     void create_descriptor_pool();
     VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;

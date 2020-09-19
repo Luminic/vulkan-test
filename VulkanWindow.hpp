@@ -197,8 +197,8 @@ private:
     // Swap Chain Initialization (only valid from `init_swap_chain_resources` to `release_swap_chain_resources`)
     //==========================================================================================================
 
-    static constexpr uint32_t nr_frames_in_flight = 2;
-    uint32_t image_count = 2;
+    static constexpr uint32_t nr_frames_in_flight = 3;
+    uint32_t image_count = 3;
 
     VkPresentModeKHR choose_swap_present_mode(const std::vector<VkPresentModeKHR> available_present_modes);
     VkExtent2D get_swap_extent(const VkSurfaceCapabilitiesKHR& capabilities);

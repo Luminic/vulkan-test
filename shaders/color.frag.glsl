@@ -9,6 +9,5 @@ layout(location = 1) in vec2 v_tex_coord;
 layout(binding = 1) uniform sampler2D tex_sampler;
 
 void main() {
-    // o_color = vec4(v_tex_coord, 0.0f, 1.0);
     o_color = texture(tex_sampler, v_tex_coord);
 }

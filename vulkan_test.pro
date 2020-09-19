@@ -25,6 +25,7 @@ HEADERS += VulkanFunctions.hpp \
 			VulkanWindow.hpp \
 			VulkanRenderer.hpp \
 			Shader.hpp \
+			Image.hpp \
 			Vertex.hpp
 
 SOURCES += main.cpp \
@@ -32,4 +33,5 @@ SOURCES += main.cpp \
 			VulkanWindow.cpp \
 			VulkanRenderer.cpp \
 			Shader.cpp \
+			Image.cpp \
 			Vertex.cpp

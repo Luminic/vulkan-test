@@ -57,12 +57,14 @@ SOURCES       = main.cpp \
 		VulkanWindow.cpp \
 		VulkanRenderer.cpp \
 		Shader.cpp \
+		Image.cpp \
 		Vertex.cpp generated_files/moc_VulkanWindow.cpp
 OBJECTS       = generated_files/main.o \
 		generated_files/VulkanFunctions.o \
 		generated_files/VulkanWindow.o \
 		generated_files/VulkanRenderer.o \
 		generated_files/Shader.o \
+		generated_files/Image.o \
 		generated_files/Vertex.o \
 		generated_files/moc_VulkanWindow.o
 DIST          = /usr/lib/qt/mkspecs/features/spec_pre.prf \
@@ -215,11 +217,13 @@ DIST          = /usr/lib/qt/mkspecs/features/spec_pre.prf \
 		VulkanWindow.hpp \
 		VulkanRenderer.hpp \
 		Shader.hpp \
+		Image.hpp \
 		Vertex.hpp main.cpp \
 		VulkanFunctions.cpp \
 		VulkanWindow.cpp \
 		VulkanRenderer.cpp \
 		Shader.cpp \
+		Image.cpp \
 		Vertex.cpp
 QMAKE_TARGET  = vulkan_test
 DESTDIR       = 
@@ -542,8 +546,8 @@ distdir: FORCE
 	@test -d $(DISTDIR) || mkdir -p $(DISTDIR)
 	$(COPY_FILE) --parents $(DIST) $(DISTDIR)/
 	$(COPY_FILE) --parents /usr/lib/qt/mkspecs/features/data/dummy.cpp $(DISTDIR)/
-	$(COPY_FILE) --parents VulkanFunctions.hpp VulkanWindow.hpp VulkanRenderer.hpp Shader.hpp Vertex.hpp $(DISTDIR)/
-	$(COPY_FILE) --parents main.cpp VulkanFunctions.cpp VulkanWindow.cpp VulkanRenderer.cpp Shader.cpp Vertex.cpp $(DISTDIR)/
+	$(COPY_FILE) --parents VulkanFunctions.hpp VulkanWindow.hpp VulkanRenderer.hpp Shader.hpp Image.hpp Vertex.hpp $(DISTDIR)/
+	$(COPY_FILE) --parents main.cpp VulkanFunctions.cpp VulkanWindow.cpp VulkanRenderer.cpp Shader.cpp Image.cpp Vertex.cpp $(DISTDIR)/
 
 
 clean: compiler_clean 
@@ -602,7 +606,8 @@ compiler_clean: compiler_moc_predefs_clean compiler_moc_header_clean
 
 generated_files/main.o: main.cpp VulkanWindow.hpp \
 		VulkanFunctions.hpp \
-		VulkanRenderer.hpp
+		VulkanRenderer.hpp \
+		Image.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/main.o main.cpp
 
 generated_files/VulkanFunctions.o: VulkanFunctions.cpp VulkanFunctions.hpp
@@ -615,12 +620,17 @@ generated_files/VulkanWindow.o: VulkanWindow.cpp VulkanWindow.hpp \
 generated_files/VulkanRenderer.o: VulkanRenderer.cpp VulkanRenderer.hpp \
 		VulkanFunctions.hpp \
 		VulkanWindow.hpp \
+		Image.hpp \
 		Shader.hpp \
 		Vertex.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/VulkanRenderer.o VulkanRenderer.cpp
 
 generated_files/Shader.o: Shader.cpp Shader.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/Shader.o Shader.cpp
+
+generated_files/Image.o: Image.cpp Image.hpp \
+		VulkanFunctions.hpp
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/Image.o Image.cpp
 
 generated_files/Vertex.o: Vertex.cpp Vertex.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/Vertex.o Vertex.cpp
