@@ -2,6 +2,7 @@
 
 #include <QVulkanDeviceFunctions>
 #include <QFile>
+#include <QString>
 #include <QDebug>
 
 #include "Shader.hpp"
@@ -19,15 +20,13 @@ const std::vector<Index> indices = {
     2, 3, 0,
 };
 
-VulkanRenderer::VulkanRenderer() {
+VulkanRenderer::VulkanRenderer() {}
 
-}
-
-VulkanRenderer::~VulkanRenderer() {
-
-}
+VulkanRenderer::~VulkanRenderer() {}
 
 void VulkanRenderer::pre_init_resources(VulkanWindow* vulkan_window) {
+    fps_timer.start();
+
     qDebug() << "pre_init_resources";
     this->vulkan_window = vulkan_window;
 
@@ -58,8 +57,6 @@ void VulkanRenderer::init_resources() {
     create_vertex_buffer();
     create_index_buffer();
     create_texture_image();
-    // create_texture_image_view();
-    // create_texture_sampler();
 }
 
 void VulkanRenderer::init_swap_chain_resources() {
@@ -70,10 +67,14 @@ void VulkanRenderer::init_swap_chain_resources() {
     create_descriptor_pool();
     create_uniform_buffers();
     create_descriptor_sets();
+
+    control_panel.show();
 }
 
 void VulkanRenderer::release_swap_chain_resources() {
     qDebug() << "release_swap_chain_resources";
+    control_panel.hide();
+
     for (auto& frame_resource : frame_resources) {
         vkd.vkdf->vkDestroyBuffer(vkd.device, frame_resource.uniform_buffer, nullptr);
         frame_resource.uniform_buffer = VK_NULL_HANDLE;
@@ -88,16 +89,6 @@ void VulkanRenderer::release_swap_chain_resources() {
 void VulkanRenderer::release_resources() {
     qDebug() << "release_resources";
 
-    // vkd.vkdf->vkDestroySampler(vkd.device, texture_sampler, nullptr);
-    // texture_sampler = VK_NULL_HANDLE;
-
-    // vkd.vkdf->vkDestroyImageView(vkd.device, texture_image_view, nullptr);
-    // texture_image_view = VK_NULL_HANDLE;
-
-    // vkd.vkdf->vkDestroyImage(vkd.device, texture_image, nullptr);
-    // texture_image = VK_NULL_HANDLE;
-    // vkd.vkdf->vkFreeMemory(vkd.device, texture_image_memory, nullptr);
-    // texture_image_memory = VK_NULL_HANDLE;
     texture_image.destroy();
 
     vkd.vkdf->vkDestroyBuffer(vkd.device, vertex_buffer, nullptr);
@@ -125,6 +116,10 @@ void VulkanRenderer::release_resources() {
 }
 
 void VulkanRenderer::start_next_frame() {
+    int frame_time = fps_timer.elapsed();
+    control_panel.update_frame_time(frame_time);
+    fps_timer.start();
+
     VkCommandBuffer command_buffer = vulkan_window->get_current_command_buffer();
 
     uint32_t current_frame_index = vulkan_window->get_current_frame_index();

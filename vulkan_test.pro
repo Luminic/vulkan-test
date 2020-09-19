@@ -26,7 +26,8 @@ HEADERS +=  src/VulkanFunctions.hpp \
 			src/VulkanRenderer.hpp \
 			src/Shader.hpp \
 			src/Image.hpp \
-			src/Vertex.hpp
+			src/Vertex.hpp \
+			src/settings/ControlPanel.hpp
 
 SOURCES +=  src/main.cpp \
 			src/VulkanFunctions.cpp \
@@ -34,4 +35,5 @@ SOURCES +=  src/main.cpp \
 			src/VulkanRenderer.cpp \
 			src/Shader.cpp \
 			src/Image.cpp \
-			src/Vertex.cpp
+			src/Vertex.cpp \
+			src/settings/ControlPanel.cpp

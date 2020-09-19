@@ -5,9 +5,13 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <QElapsedTimer>
+
 #include "VulkanFunctions.hpp"
 #include "VulkanWindow.hpp"
 #include "Image.hpp"
+
+#include "settings/ControlPanel.hpp"
 
 struct UniformBufferObject {
     glm::mat4 model;
@@ -74,6 +78,9 @@ private:
 
     // One second fence timeout
     const uint64_t fence_timeout = 1'000'000'000;
+
+    QElapsedTimer fps_timer;
+    ControlPanel control_panel;
 };
 
 #endif

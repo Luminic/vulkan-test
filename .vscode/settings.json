@@ -69,7 +69,8 @@
         "typeinfo": "cpp",
         "valarray": "cpp",
         "variant": "cpp",
-        "tensor": "cpp"
+        "tensor": "cpp",
+        "future": "cpp"
     },
     "C_Cpp.errorSquiggles": "Enabled"
 }
