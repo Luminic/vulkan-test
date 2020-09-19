@@ -4,7 +4,7 @@
 
 TEMPLATE = app
 TARGET = vulkan_test
-INCLUDEPATH += .
+INCLUDEPATH += . ./src
 
 QT += core widgets gui concurrent
 CONFIG += debug
@@ -21,17 +21,17 @@ MOC_DIR = generated_files
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 # Input
-HEADERS += VulkanFunctions.hpp \
-			VulkanWindow.hpp \
-			VulkanRenderer.hpp \
-			Shader.hpp \
-			Image.hpp \
-			Vertex.hpp
+HEADERS +=  src/VulkanFunctions.hpp \
+			src/VulkanWindow.hpp \
+			src/VulkanRenderer.hpp \
+			src/Shader.hpp \
+			src/Image.hpp \
+			src/Vertex.hpp
 
-SOURCES += main.cpp \
-			VulkanFunctions.cpp \
-			VulkanWindow.cpp \
-			VulkanRenderer.cpp \
-			Shader.cpp \
-			Image.cpp \
-			Vertex.cpp
+SOURCES +=  src/main.cpp \
+			src/VulkanFunctions.cpp \
+			src/VulkanWindow.cpp \
+			src/VulkanRenderer.cpp \
+			src/Shader.cpp \
+			src/Image.cpp \
+			src/Vertex.cpp

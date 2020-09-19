@@ -210,8 +210,8 @@ void VulkanRenderer::create_descriptor_set_layout() {
 void VulkanRenderer::create_graphics_pipeline() {
     VkResult res;
 
-    ShaderModule vertex_shader_module(vkd.device, vkd.vkdf, "shaders/vert.spv");
-    ShaderModule fragment_shader_module(vkd.device, vkd.vkdf, "shaders/frag.spv");
+    ShaderModule vertex_shader_module(vkd.device, vkd.vkdf, "src/shaders/vert.spv");
+    ShaderModule fragment_shader_module(vkd.device, vkd.vkdf, "src/shaders/frag.spv");
 
     VkPipelineShaderStageCreateInfo shader_stages[] = {
         vertex_shader_module.get_create_info(VK_SHADER_STAGE_VERTEX_BIT),
