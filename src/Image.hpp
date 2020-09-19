@@ -17,17 +17,20 @@ public:
         VkImageTiling tiling;
         VkImageUsageFlags usage;
         VkMemoryPropertyFlags properties;
+        VkImageAspectFlags aspect_flags; // Needed for `create_view`
 
         VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT;
         VkSharingMode sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
 
         static CreateData default_texture_data(uint32_t width=0, uint32_t height=0) {
-            return CreateData{width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,};
+            return CreateData{width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_IMAGE_ASPECT_COLOR_BIT,};
         }
     };
     VkResult create(VulkanData vkd, const CreateData& icd);
 
-    static VkResult create_view(VulkanData vkd, VkImage image, VkFormat format, VkImageView& image_view);
+    static VkResult create_view(VulkanData vkd, VkImage image, VkFormat format, VkImageAspectFlags aspect_flags, VkImageView& image_view);
+    // Use special `VkImageAspectFlags` instead of the one specified in create_data
+    VkResult create_view(VkImageAspectFlags aspect_flags);
     VkResult create_view();
 
     static VkSamplerCreateInfo default_texture_sampler_create_info(VkFilter filter=VK_FILTER_NEAREST, VkSamplerAddressMode address_mode=VK_SAMPLER_ADDRESS_MODE_REPEAT, VkBool32 anisotropy_enabled=VK_FALSE);
@@ -41,7 +44,9 @@ public:
     // Image operations
 
     // Transition done in transfer stage
-    static void transition_image_layout(VulkanData vkd, VkImageLayout old_layout, VkImageLayout new_layout, VkImage image, VkCommandBuffer command_buffer);
+    static void transition_image_layout(VulkanData vkd, VkImageLayout old_layout, VkImageLayout new_layout, VkImageAspectFlags aspect_flags, VkImage image, VkCommandBuffer command_buffer);
+    // Use special `VkImageAspectFlags` instead of the one specified in create_data
+    void transition_image_layout(VkImageLayout old_layout, VkImageLayout new_layout, VkImageAspectFlags aspect_flags, VkCommandBuffer command_buffer);
     void transition_image_layout(VkImageLayout old_layout, VkImageLayout new_layout, VkCommandBuffer command_buffer);
 
     static void copy_buffer_to_image(VulkanData vkd, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, VkCommandBuffer command_buffer);

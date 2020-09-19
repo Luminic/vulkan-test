@@ -44,6 +44,9 @@ void VulkanWindow::init_resources() {
     // Figure these out here because we want the renderpass to be available at init_resources
     swap_chain_support_details = query_swap_chain_support_details(vkd.physical_device);
     swap_chain_surface_format = choose_swap_surface_format(swap_chain_support_details.formats);
+    depth_stencil_format = find_depth_format();
+    has_stencil = has_stencil_component(depth_stencil_format);
+
     // (So the pipeline can be created in init_resources and doesn't have to be defered to init_swap_chain_resources)
     create_default_render_pass();
 
@@ -56,8 +59,8 @@ void VulkanWindow::init_swap_chain_resources() {
     swap_chain_support_details = query_swap_chain_support_details(vkd.physical_device);
 
     create_swap_chain();
+    create_depth_image();
     get_swap_chain_images();
-    create_image_views();
     create_frame_buffers();
 
     create_sync_objects();
@@ -71,6 +74,8 @@ void VulkanWindow::release_swap_chain_resources() {
 
     status = Status::Device_Ready;
     vulkan_renderer->release_swap_chain_resources();
+
+    depth_image.destroy();
 
     for (auto& frame_resource : frame_resources) {
         vkd.vkdf->vkDestroySemaphore(vkd.device, frame_resource.image_available_semaphore, nullptr);
@@ -455,6 +460,37 @@ VkSurfaceFormatKHR VulkanWindow::choose_swap_surface_format(const std::vector<Vk
     return available_formats[0];
 }
 
+int VulkanWindow::find_supported_format(const VkFormat* formats, int nr_candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+    for (int i=0; i<nr_candidates; i++) {
+        VkFormatProperties properties;
+        vkd.vkf->vkGetPhysicalDeviceFormatProperties(vkd.physical_device, formats[i], &properties);
+        if (tiling == VK_IMAGE_TILING_LINEAR && (properties.linearTilingFeatures & features) == features) {
+            return i;
+        }
+        else if (tiling == VK_IMAGE_TILING_OPTIMAL && (properties.optimalTilingFeatures & features) == features) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+VkFormat VulkanWindow::find_depth_format() {
+    VkFormat depth_formats[] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
+    int index = find_supported_format(
+        depth_formats,
+        sizeof(depth_formats)/sizeof(depth_formats[0]),
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+    );
+    if (index == -1) qFatal("Failed to find supported depth format.");
+    return depth_formats[index];
+}
+
+bool VulkanWindow::has_stencil_component(VkFormat format) {
+    return format == VK_FORMAT_D32_SFLOAT_S8_UINT ||
+            format == VK_FORMAT_D24_UNORM_S8_UINT;
+}
+
 void VulkanWindow::create_default_render_pass() {
     VkAttachmentDescription color_attachment{};
     color_attachment.format = swap_chain_surface_format.format;
@@ -470,10 +506,25 @@ void VulkanWindow::create_default_render_pass() {
     color_attachment_reference.attachment = 0;
     color_attachment_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+    VkAttachmentDescription depth_attachment{};
+    depth_attachment.format = depth_stencil_format;
+    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depth_attachment_reference{};
+    depth_attachment_reference.attachment = 1;
+    depth_attachment_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &color_attachment_reference;
+    subpass.pDepthStencilAttachment = &depth_attachment_reference;
 
     VkSubpassDependency subpass_dependency{};
     subpass_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -483,10 +534,15 @@ void VulkanWindow::create_default_render_pass() {
     subpass_dependency.srcAccessMask = 0;
     subpass_dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
+    VkAttachmentDescription attachments[] = {
+        color_attachment,
+        depth_attachment,
+    };
+
     VkRenderPassCreateInfo render_pass_create_info{};
     render_pass_create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    render_pass_create_info.attachmentCount = 1;
-    render_pass_create_info.pAttachments = &color_attachment;
+    render_pass_create_info.attachmentCount = sizeof(attachments)/sizeof(attachments[0]);
+    render_pass_create_info.pAttachments = attachments;
     render_pass_create_info.subpassCount = 1;
     render_pass_create_info.pSubpasses = &subpass;
     render_pass_create_info.dependencyCount = 1;
@@ -562,6 +618,22 @@ void VulkanWindow::create_swap_chain() {
         qFatal("VulkanWindow: Failed to create swapchain: %d", res);
 }
 
+void VulkanWindow::create_depth_image() {
+    Image::CreateData icd{};
+    icd.width = swap_chain_extent.width;
+    icd.height = swap_chain_extent.height;
+    icd.format = depth_stencil_format;
+    icd.tiling = VK_IMAGE_TILING_OPTIMAL;
+    icd.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    icd.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    icd.aspect_flags = VK_IMAGE_ASPECT_DEPTH_BIT;
+    if (has_stencil) 
+        icd.aspect_flags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+
+    depth_image.create(vkd, icd);
+    depth_image.create_view(VK_IMAGE_ASPECT_DEPTH_BIT);
+}
+
 void VulkanWindow::get_swap_chain_images() {
     vkGetSwapchainImagesKHR(vkd.device, swap_chain, &image_count, nullptr);
     std::vector<VkImage> swap_chain_images(image_count);
@@ -570,34 +642,25 @@ void VulkanWindow::get_swap_chain_images() {
     image_resources.resize(image_count);
     for (size_t i=0; i<swap_chain_images.size(); i++) {
         image_resources[i].image = swap_chain_images[i];
-    }
-}
-
-void VulkanWindow::create_image_views() {
-    // swap_chain_image_views.resize(image_count);
-    Q_ASSERT_X(image_resources.size() == image_count, "Creating image views", "image_resources has incorrect size");
-
-    for (size_t i=0; i<image_resources.size(); i++) {
-        VkResult res = Image::create_view(vkd, image_resources[i].image, swap_chain_surface_format.format, image_resources[i].image_view);
+        // Also get the image view
+        VkResult res = Image::create_view(vkd, image_resources[i].image, swap_chain_surface_format.format, VK_IMAGE_ASPECT_COLOR_BIT, image_resources[i].image_view);
         if (res != VK_SUCCESS)
             qFatal("Failed to create image view: %d", res);
     }
 }
 
 void VulkanWindow::create_frame_buffers() {
-    Q_ASSERT_X(image_resources.size() == image_count, "Creating frame buffers", "image_resources has incorrect size");
-
-    VkFramebufferCreateInfo framebuffer_create_info{};
-    framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    framebuffer_create_info.renderPass = default_render_pass;
-    framebuffer_create_info.attachmentCount = 1;
-    framebuffer_create_info.width = swap_chain_extent.width;
-    framebuffer_create_info.height = swap_chain_extent.height;
-    framebuffer_create_info.layers = 1;
-
     for (auto& image_resource : image_resources) {
-        VkImageView attachments[] = {image_resource.image_view};
+        VkImageView attachments[] = {image_resource.image_view, depth_image.get_vk_image_view()};
+
+        VkFramebufferCreateInfo framebuffer_create_info{};
+        framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_create_info.renderPass = default_render_pass;
+        framebuffer_create_info.attachmentCount = sizeof(attachments)/sizeof(attachments[0]);
         framebuffer_create_info.pAttachments = attachments;
+        framebuffer_create_info.width = swap_chain_extent.width;
+        framebuffer_create_info.height = swap_chain_extent.height;
+        framebuffer_create_info.layers = 1;
 
         VkResult res = vkd.vkdf->vkCreateFramebuffer(vkd.device, &framebuffer_create_info, nullptr, &image_resource.framebuffer);
         if (res != VK_SUCCESS)

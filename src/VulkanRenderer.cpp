@@ -9,15 +9,23 @@
 #include "Vertex.hpp"
 
 const std::vector<Vertex> vertices = {
-    Vertex{glm::vec2(-0.5f, -0.5f), glm::vec3(1.0f,0.0f,0.0f), glm::vec2(0.0f,0.0f)},
-    Vertex{glm::vec2( 0.5f, -0.5f), glm::vec3(0.0f,1.0f,0.0f), glm::vec2(1.0f,0.0f)},
-    Vertex{glm::vec2( 0.5f,  0.5f), glm::vec3(0.0f,0.0f,1.0f), glm::vec2(1.0f,1.0f)},
-    Vertex{glm::vec2(-0.5f,  0.5f), glm::vec3(1.0f,1.0f,1.0f), glm::vec2(0.0f,1.0f)},
+    Vertex{glm::vec3(-0.5f,-0.5f, 0.0f), glm::vec3(1.0f,0.0f,0.0f), glm::vec2(0.0f,0.0f)},
+    Vertex{glm::vec3( 0.5f,-0.5f, 0.0f), glm::vec3(0.0f,1.0f,0.0f), glm::vec2(1.0f,0.0f)},
+    Vertex{glm::vec3( 0.5f, 0.5f, 0.0f), glm::vec3(0.0f,0.0f,1.0f), glm::vec2(1.0f,1.0f)},
+    Vertex{glm::vec3(-0.5f, 0.5f, 0.0f), glm::vec3(1.0f,1.0f,1.0f), glm::vec2(0.0f,1.0f)},
+
+    Vertex{glm::vec3(-0.5f,-0.5f, 1.0f), glm::vec3(1.0f,0.0f,0.0f), glm::vec2(0.0f,0.0f)},
+    Vertex{glm::vec3( 0.5f,-0.5f, 1.0f), glm::vec3(0.0f,1.0f,0.0f), glm::vec2(1.0f,0.0f)},
+    Vertex{glm::vec3( 0.5f, 0.5f, 1.0f), glm::vec3(0.0f,0.0f,1.0f), glm::vec2(1.0f,1.0f)},
+    Vertex{glm::vec3(-0.5f, 0.5f, 1.0f), glm::vec3(1.0f,1.0f,1.0f), glm::vec2(0.0f,1.0f)},
 };
 
 const std::vector<Index> indices = {
     0, 1, 2,
     2, 3, 0,
+
+    4, 5, 6,
+    6, 7, 4,
 };
 
 VulkanRenderer::VulkanRenderer() {}
@@ -57,6 +65,8 @@ void VulkanRenderer::init_resources() {
     create_vertex_buffer();
     create_index_buffer();
     create_texture_image();
+
+    control_panel.show();
 }
 
 void VulkanRenderer::init_swap_chain_resources() {
@@ -67,13 +77,10 @@ void VulkanRenderer::init_swap_chain_resources() {
     create_descriptor_pool();
     create_uniform_buffers();
     create_descriptor_sets();
-
-    control_panel.show();
 }
 
 void VulkanRenderer::release_swap_chain_resources() {
     qDebug() << "release_swap_chain_resources";
-    control_panel.hide();
 
     for (auto& frame_resource : frame_resources) {
         vkd.vkdf->vkDestroyBuffer(vkd.device, frame_resource.uniform_buffer, nullptr);
@@ -88,6 +95,8 @@ void VulkanRenderer::release_swap_chain_resources() {
 
 void VulkanRenderer::release_resources() {
     qDebug() << "release_resources";
+
+    control_panel.hide();
 
     texture_image.destroy();
 
@@ -128,9 +137,9 @@ void VulkanRenderer::start_next_frame() {
     static float green = 0.0f;
     green += 0.005f;
     if (green > 1.0f) green -= 1.0f;
-    VkClearColorValue clear_color = {{0.0f, green, 0.0f, 1.0f}};
-    VkClearValue clear_value{};
-    clear_value.color = clear_color;
+    VkClearValue clear_values[2] = {};
+    clear_values[0].color = {0.0f, green, 0.0f, 1.0f};
+    clear_values[1].depthStencil = {1.0f, 0};
 
     VkExtent2D extent = vulkan_window->get_image_extent();
 
@@ -154,8 +163,8 @@ void VulkanRenderer::start_next_frame() {
     render_pass_begin_info.renderPass = vulkan_window->get_default_render_pass();
     render_pass_begin_info.framebuffer = vulkan_window->get_current_frame_buffer();
     render_pass_begin_info.renderArea.extent = vulkan_window->get_image_extent();
-    render_pass_begin_info.clearValueCount = 1;
-    render_pass_begin_info.pClearValues = &clear_value;
+    render_pass_begin_info.clearValueCount = sizeof(clear_values)/sizeof(clear_values[0]);
+    render_pass_begin_info.pClearValues = clear_values;
 
     vkd.vkdf->vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
     vkd.vkdf->vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
@@ -256,6 +265,16 @@ void VulkanRenderer::create_graphics_pipeline() {
     multisampling_info.alphaToCoverageEnable = VK_FALSE;
     multisampling_info.alphaToOneEnable = VK_FALSE;
 
+    VkPipelineDepthStencilStateCreateInfo depth_stencil_info{};
+    depth_stencil_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depth_stencil_info.depthTestEnable = VK_TRUE;
+    depth_stencil_info.depthWriteEnable = VK_TRUE;
+    depth_stencil_info.depthCompareOp = VK_COMPARE_OP_LESS;
+    depth_stencil_info.depthBoundsTestEnable = VK_FALSE;
+    depth_stencil_info.minDepthBounds = 0.0f;
+    depth_stencil_info.maxDepthBounds = 1.0f;
+    depth_stencil_info.stencilTestEnable = VK_COMPARE_OP_LESS;
+
     VkPipelineColorBlendAttachmentState color_blend_attachment{};
     color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     color_blend_attachment.blendEnable = VK_FALSE;
@@ -297,7 +316,7 @@ void VulkanRenderer::create_graphics_pipeline() {
     pipeline_info.pViewportState = &viewport_info;
     pipeline_info.pRasterizationState = &rasterization_info;
     pipeline_info.pMultisampleState = &multisampling_info;
-    pipeline_info.pDepthStencilState = nullptr;
+    pipeline_info.pDepthStencilState = &depth_stencil_info;
     pipeline_info.pColorBlendState = &color_blending_info;
     pipeline_info.pDynamicState = &dynamic_state_info;
     pipeline_info.layout = pipeline_layout;

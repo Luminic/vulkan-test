@@ -42,13 +42,13 @@ VkResult Image::create(VulkanData vkd, const CreateData& img_data) {
     return VK_SUCCESS;
 }
 
-VkResult Image::create_view(VulkanData vkd, VkImage image, VkFormat format, VkImageView& image_view) {
+VkResult Image::create_view(VulkanData vkd, VkImage image, VkFormat format, VkImageAspectFlags aspect_flags, VkImageView& image_view) {
     VkImageViewCreateInfo view_info{};
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_info.image = image;
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view_info.format = format;
-    view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    view_info.subresourceRange.aspectMask = aspect_flags;
     view_info.subresourceRange.baseMipLevel = 0;
     view_info.subresourceRange.levelCount = 1;
     view_info.subresourceRange.baseArrayLayer = 0;
@@ -57,8 +57,12 @@ VkResult Image::create_view(VulkanData vkd, VkImage image, VkFormat format, VkIm
     return vkd.vkdf->vkCreateImageView(vkd.device, &view_info, nullptr, &image_view);
 }
 
+VkResult Image::create_view(VkImageAspectFlags aspect_flags) {
+    return Image::create_view(vkd, image, img_data.format, aspect_flags, image_view);
+}
+
 VkResult Image::create_view() {
-    return Image::create_view(vkd, image, img_data.format, image_view);
+    return Image::create_view(vkd, image, img_data.format, img_data.aspect_flags, image_view);
 }
 
 inline VkSamplerCreateInfo Image::default_texture_sampler_create_info(VkFilter filter, VkSamplerAddressMode address_mode, VkBool32 anisotropy_enabled) {
@@ -110,7 +114,7 @@ void Image::destroy() {
     }
 }
 
-void Image::transition_image_layout(VulkanData vkd, VkImageLayout old_layout, VkImageLayout new_layout, VkImage image, VkCommandBuffer command_buffer) {
+void Image::transition_image_layout(VulkanData vkd, VkImageLayout old_layout, VkImageLayout new_layout, VkImageAspectFlags aspect_flags, VkImage image, VkCommandBuffer command_buffer) {
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = old_layout;
@@ -118,7 +122,7 @@ void Image::transition_image_layout(VulkanData vkd, VkImageLayout old_layout, Vk
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.aspectMask = aspect_flags;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
@@ -141,6 +145,13 @@ void Image::transition_image_layout(VulkanData vkd, VkImageLayout old_layout, Vk
         src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     }
+    else if (old_layout==VK_IMAGE_LAYOUT_UNDEFINED && new_layout==VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        dst_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    }
     else {
         qFatal("Unsupported layout transition: %d to %d", old_layout, new_layout);
     }
@@ -155,8 +166,12 @@ void Image::transition_image_layout(VulkanData vkd, VkImageLayout old_layout, Vk
     );
 }
 
+void Image::transition_image_layout(VkImageLayout old_layout, VkImageLayout new_layout, VkImageAspectFlags aspect_flags, VkCommandBuffer command_buffer) {
+    Image::transition_image_layout(vkd, old_layout, new_layout, aspect_flags, image, command_buffer);
+}
+
 void Image::transition_image_layout(VkImageLayout old_layout, VkImageLayout new_layout, VkCommandBuffer command_buffer) {
-    Image::transition_image_layout(vkd, old_layout, new_layout, image, command_buffer);
+    Image::transition_image_layout(vkd, old_layout, new_layout, img_data.aspect_flags, image, command_buffer);
 }
 
 void Image::copy_buffer_to_image(VulkanData vkd, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height, VkCommandBuffer command_buffer) {

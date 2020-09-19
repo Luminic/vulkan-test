@@ -9,6 +9,7 @@
 #include <array>
 
 #include "VulkanFunctions.hpp"
+#include "Image.hpp"
 
 class VulkanWindow;
 
@@ -190,6 +191,17 @@ private:
     VkSurfaceFormatKHR choose_swap_surface_format(const std::vector<VkSurfaceFormatKHR>& available_formats);
     VkSurfaceFormatKHR swap_chain_surface_format;
 
+    // Returns the index of the first supported format
+    // Will return -1 if a supported format cannot be found
+    int find_supported_format(const VkFormat* formats, int nr_candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+    VkFormat find_depth_format();
+    // Only checks the format candidates in `find_depth_format`
+    // DO NOT USE THIS FUNCTION FOR CHECKING IF A RANDOM FORMAT HAS A STENCIL COMPONENT
+    bool has_stencil_component(VkFormat format);
+    // Might not have stencil part if unsupported
+    VkFormat depth_stencil_format;
+    bool has_stencil;
+
     void create_default_render_pass();
     VkRenderPass default_render_pass = VK_NULL_HANDLE;
 
@@ -206,6 +218,9 @@ private:
     VkSwapchainKHR swap_chain = VK_NULL_HANDLE;
     VkExtent2D swap_chain_extent;
 
+    void create_depth_image();
+    Image depth_image{};
+
     struct ImageResources {
         VkImage image = VK_NULL_HANDLE;
         VkImageView image_view = VK_NULL_HANDLE;
@@ -214,7 +229,6 @@ private:
         VkFence fence = VK_NULL_HANDLE;
     };
     void get_swap_chain_images();
-    void create_image_views();
     void create_frame_buffers();
     std::vector<ImageResources> image_resources;
 
