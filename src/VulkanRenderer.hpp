@@ -11,6 +11,7 @@
 #include "VulkanFunctions.hpp"
 #include "VulkanWindow.hpp"
 #include "Image.hpp"
+#include "Buffer.hpp"
 
 #include "settings/ControlPanel.hpp"
 
@@ -46,13 +47,10 @@ private:
     VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
     VkPipeline graphics_pipeline = VK_NULL_HANDLE;
 
+    // Creates both vertex and index buffers
     void create_vertex_buffer();
-    VkBuffer vertex_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertex_buffer_memory = VK_NULL_HANDLE;
-
-    void create_index_buffer();
-    VkBuffer index_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory index_buffer_memory = VK_NULL_HANDLE;
+    Buffer vertex_buffer{};
+    Buffer index_buffer{};
 
     void create_texture_image();
     Image texture_image{};
@@ -61,20 +59,16 @@ private:
     VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
 
     void create_uniform_buffers();
-    VkBuffer uniform_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory uniform_buffer_memory = VK_NULL_HANDLE;
+    Buffer uniform_buffer{};
     VkDeviceSize aligned_size = 0;
     uchar* uniform_buffer_memory_ptr = nullptr;
+
     void create_descriptor_sets();
     VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
 
     void update_uniform_buffer(uint32_t current_frame_index);
     UniformBufferObject ubo{};
 
-
-    void create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkBuffer& buffer, VkDeviceMemory& memory);
-    void copy_data_to_buffer(VkBuffer dst_buffer, const void* data, VkDeviceSize size);
-    void copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size);
 
     // One second fence timeout
     const uint64_t fence_timeout = 1'000'000'000;

@@ -58,6 +58,7 @@ SOURCES       = src/main.cpp \
 		src/VulkanRenderer.cpp \
 		src/Shader.cpp \
 		src/Image.cpp \
+		src/Buffer.cpp \
 		src/Vertex.cpp \
 		src/settings/ControlPanel.cpp generated_files/moc_VulkanWindow.cpp \
 		generated_files/moc_ControlPanel.cpp
@@ -67,6 +68,7 @@ OBJECTS       = generated_files/main.o \
 		generated_files/VulkanRenderer.o \
 		generated_files/Shader.o \
 		generated_files/Image.o \
+		generated_files/Buffer.o \
 		generated_files/Vertex.o \
 		generated_files/ControlPanel.o \
 		generated_files/moc_VulkanWindow.o \
@@ -222,6 +224,7 @@ DIST          = /usr/lib/qt/mkspecs/features/spec_pre.prf \
 		src/VulkanRenderer.hpp \
 		src/Shader.hpp \
 		src/Image.hpp \
+		src/Buffer.hpp \
 		src/Vertex.hpp \
 		src/settings/ControlPanel.hpp src/main.cpp \
 		src/VulkanFunctions.cpp \
@@ -229,6 +232,7 @@ DIST          = /usr/lib/qt/mkspecs/features/spec_pre.prf \
 		src/VulkanRenderer.cpp \
 		src/Shader.cpp \
 		src/Image.cpp \
+		src/Buffer.cpp \
 		src/Vertex.cpp \
 		src/settings/ControlPanel.cpp
 QMAKE_TARGET  = vulkan_test
@@ -552,8 +556,8 @@ distdir: FORCE
 	@test -d $(DISTDIR) || mkdir -p $(DISTDIR)
 	$(COPY_FILE) --parents $(DIST) $(DISTDIR)/
 	$(COPY_FILE) --parents /usr/lib/qt/mkspecs/features/data/dummy.cpp $(DISTDIR)/
-	$(COPY_FILE) --parents src/VulkanFunctions.hpp src/VulkanWindow.hpp src/VulkanRenderer.hpp src/Shader.hpp src/Image.hpp src/Vertex.hpp src/settings/ControlPanel.hpp $(DISTDIR)/
-	$(COPY_FILE) --parents src/main.cpp src/VulkanFunctions.cpp src/VulkanWindow.cpp src/VulkanRenderer.cpp src/Shader.cpp src/Image.cpp src/Vertex.cpp src/settings/ControlPanel.cpp $(DISTDIR)/
+	$(COPY_FILE) --parents src/VulkanFunctions.hpp src/VulkanWindow.hpp src/VulkanRenderer.hpp src/Shader.hpp src/Image.hpp src/Buffer.hpp src/Vertex.hpp src/settings/ControlPanel.hpp $(DISTDIR)/
+	$(COPY_FILE) --parents src/main.cpp src/VulkanFunctions.cpp src/VulkanWindow.cpp src/VulkanRenderer.cpp src/Shader.cpp src/Image.cpp src/Buffer.cpp src/Vertex.cpp src/settings/ControlPanel.cpp $(DISTDIR)/
 
 
 clean: compiler_clean 
@@ -590,6 +594,7 @@ compiler_moc_header_clean:
 	-$(DEL_FILE) generated_files/moc_VulkanWindow.cpp generated_files/moc_ControlPanel.cpp
 generated_files/moc_VulkanWindow.cpp: src/VulkanWindow.hpp \
 		src/VulkanFunctions.hpp \
+		src/Image.hpp \
 		generated_files/moc_predefs.h \
 		/usr/bin/moc
 	/usr/bin/moc $(DEFINES) --include /home/l/C++/QT/Vulkan/vulkan_test2/generated_files/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/l/C++/QT/Vulkan/vulkan_test2 -I/home/l/C++/QT/Vulkan/vulkan_test2 -I/home/l/C++/QT/Vulkan/vulkan_test2/src -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtConcurrent -I/usr/include/qt/QtCore -I/usr/include/c++/10.2.0 -I/usr/include/c++/10.2.0/x86_64-pc-linux-gnu -I/usr/include/c++/10.2.0/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include-fixed -I/usr/include src/VulkanWindow.hpp -o generated_files/moc_VulkanWindow.cpp
@@ -617,8 +622,9 @@ compiler_clean: compiler_moc_predefs_clean compiler_moc_header_clean
 
 generated_files/main.o: src/main.cpp src/VulkanWindow.hpp \
 		src/VulkanFunctions.hpp \
-		src/VulkanRenderer.hpp \
 		src/Image.hpp \
+		src/VulkanRenderer.hpp \
+		src/Buffer.hpp \
 		src/settings/ControlPanel.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/main.o src/main.cpp
 
@@ -634,6 +640,7 @@ generated_files/VulkanRenderer.o: src/VulkanRenderer.cpp src/VulkanRenderer.hpp 
 		src/VulkanFunctions.hpp \
 		src/VulkanWindow.hpp \
 		src/Image.hpp \
+		src/Buffer.hpp \
 		src/settings/ControlPanel.hpp \
 		src/Shader.hpp \
 		src/Vertex.hpp
@@ -645,6 +652,10 @@ generated_files/Shader.o: src/Shader.cpp src/Shader.hpp
 generated_files/Image.o: src/Image.cpp src/Image.hpp \
 		src/VulkanFunctions.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/Image.o src/Image.cpp
+
+generated_files/Buffer.o: src/Buffer.cpp src/Buffer.hpp \
+		src/VulkanFunctions.hpp
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/Buffer.o src/Buffer.cpp
 
 generated_files/Vertex.o: src/Vertex.cpp src/Vertex.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o generated_files/Vertex.o src/Vertex.cpp

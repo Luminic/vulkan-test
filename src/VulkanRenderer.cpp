@@ -63,7 +63,6 @@ void VulkanRenderer::init_resources() {
     create_descriptor_set_layout();
     create_graphics_pipeline();
     create_vertex_buffer();
-    create_index_buffer();
     create_texture_image();
 
     control_panel.show();
@@ -81,9 +80,8 @@ void VulkanRenderer::init_swap_chain_resources() {
 void VulkanRenderer::release_swap_chain_resources() {
     qDebug() << "release_swap_chain_resources";
 
-    vkd.vkdf->vkUnmapMemory(vkd.device, uniform_buffer_memory);
-    vkd.vkdf->vkDestroyBuffer(vkd.device, uniform_buffer, nullptr);
-    vkd.vkdf->vkFreeMemory(vkd.device, uniform_buffer_memory, nullptr);
+    vkd.vkdf->vkUnmapMemory(vkd.device, uniform_buffer.get_vk_buffer_memory());
+    uniform_buffer.destroy();
 
     vkd.vkdf->vkDestroyDescriptorPool(vkd.device, descriptor_pool, nullptr);
     descriptor_pool = VK_NULL_HANDLE;
@@ -96,15 +94,8 @@ void VulkanRenderer::release_resources() {
 
     texture_image.destroy();
 
-    vkd.vkdf->vkDestroyBuffer(vkd.device, vertex_buffer, nullptr);
-    vertex_buffer = VK_NULL_HANDLE;
-    vkd.vkdf->vkFreeMemory(vkd.device, vertex_buffer_memory, nullptr);
-    vertex_buffer_memory = VK_NULL_HANDLE;
-
-    vkd.vkdf->vkDestroyBuffer(vkd.device, index_buffer, nullptr);
-    index_buffer = VK_NULL_HANDLE;
-    vkd.vkdf->vkFreeMemory(vkd.device, index_buffer_memory, nullptr);
-    index_buffer_memory = VK_NULL_HANDLE;
+    vertex_buffer.destroy();
+    index_buffer.destroy();
 
     vkd.vkdf->vkDestroyDescriptorSetLayout(vkd.device, descriptor_set_layout, nullptr);
     descriptor_set_layout = VK_NULL_HANDLE;
@@ -165,9 +156,10 @@ void VulkanRenderer::start_next_frame() {
     vkd.vkdf->vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
     vkd.vkdf->vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
+    vkd.vkdf->vkCmdBindIndexBuffer(command_buffer, index_buffer.get_vk_buffer(), 0, VK_INDEX_TYPE_UINT32);
     VkDeviceSize offsets[] = {0};
-    vkd.vkdf->vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
-    vkd.vkdf->vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, offsets);
+    VkBuffer vk_vertex_buffer = vertex_buffer.get_vk_buffer();
+    vkd.vkdf->vkCmdBindVertexBuffers(command_buffer, 0, 1, &vk_vertex_buffer, offsets);
 
     uint32_t dynamic_uniform_buffer_offset = current_frame_index * aligned_size;
     vkd.vkdf->vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 1, &dynamic_uniform_buffer_offset);
@@ -329,31 +321,44 @@ void VulkanRenderer::create_graphics_pipeline() {
 }
 
 void VulkanRenderer::create_vertex_buffer() {
-    VkDeviceSize buffer_size = vertices.size() * sizeof(Vertex);
+    VkDeviceSize vertex_buffer_size = vertices.size() * sizeof(Vertex);
+    VkDeviceSize index_buffer_size = indices.size() * sizeof(Index);
 
-    create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer, vertex_buffer_memory);
-    copy_data_to_buffer(vertex_buffer, vertices.data(), buffer_size);
-}
+    vertex_buffer.create(vkd, Buffer::CreateData{vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT});
+    index_buffer.create(vkd, Buffer::CreateData{index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT});
 
-void VulkanRenderer::create_index_buffer() {
-    VkDeviceSize buffer_size = indices.size() * sizeof(Index);
+    VkCommandBuffer command_buffer = begin_single_time_commands(vkd, vulkan_window->get_graphics_command_pool());
+    Buffer sb = vertex_buffer.copy_data_to_buffer(vertices.data(), vertex_buffer_size, command_buffer);
+    Buffer sb2 = index_buffer.copy_data_to_buffer(indices.data(), index_buffer_size, command_buffer);
 
-    create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, index_buffer, index_buffer_memory);
-    copy_data_to_buffer(index_buffer, indices.data(), buffer_size);
+    // Make sure transfer has finished before the vertex & index buffers are used
+    VkMemoryBarrier memory_barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT};
+    vkd.vkdf->vkCmdPipelineBarrier(
+        command_buffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+        0,
+        1, &memory_barrier,
+        0, nullptr,
+        0, nullptr
+    );
+
+    end_single_time_commands(vkd, vulkan_window->get_graphics_command_pool(), vulkan_window->get_graphics_queue(), command_buffer, fence_timeout);
+    
+    // Clean up
+    sb.destroy();
+    sb2.destroy();
 }
 
 void VulkanRenderer::create_texture_image() {
     const QImage qt_image = QImage("textures/awesomeface.png").convertToFormat(QImage::Format_RGBA8888);
 
-    VkBuffer staging_buffer;
-    VkDeviceMemory staging_buffer_memory;
-
-    create_buffer(qt_image.sizeInBytes(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+    Buffer staging_buffer{};
+    staging_buffer.create(vkd, Buffer::CreateData{(VkDeviceSize)qt_image.sizeInBytes(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT});
 
     void* data;
-    vkd.vkdf->vkMapMemory(vkd.device, staging_buffer_memory, 0, qt_image.sizeInBytes(), 0, &data);
+    vkd.vkdf->vkMapMemory(vkd.device, staging_buffer.get_vk_buffer_memory(), 0, qt_image.sizeInBytes(), 0, &data);
     memcpy(data, qt_image.constBits(), qt_image.sizeInBytes());
-    vkd.vkdf->vkUnmapMemory(vkd.device, staging_buffer_memory);
+    vkd.vkdf->vkUnmapMemory(vkd.device, staging_buffer.get_vk_buffer_memory());
 
     Image::CreateData icd = Image::CreateData::default_texture_data(qt_image.width(), qt_image.height());
     icd.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -363,7 +368,7 @@ void VulkanRenderer::create_texture_image() {
     VkCommandBuffer command_buffer = begin_single_time_commands(vkd, command_pool);
 
     texture_image.transition_image_layout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, command_buffer);
-    texture_image.copy_buffer_to_image(staging_buffer, command_buffer);
+    texture_image.copy_buffer_to_image(staging_buffer.get_vk_buffer(), command_buffer);
     texture_image.transition_image_layout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, command_buffer);
 
     VkQueue queue = vulkan_window->get_graphics_queue();
@@ -374,8 +379,7 @@ void VulkanRenderer::create_texture_image() {
     sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
     texture_image.create_sampler(sci);
 
-    vkd.vkdf->vkDestroyBuffer(vkd.device, staging_buffer, nullptr);
-    vkd.vkdf->vkFreeMemory(vkd.device, staging_buffer_memory, nullptr);
+    staging_buffer.destroy();
 }
 
 void VulkanRenderer::create_descriptor_pool() {
@@ -404,9 +408,9 @@ void VulkanRenderer::create_uniform_buffers() {
 
     VkDeviceSize buffer_size = aligned_size * vulkan_window->get_nr_concurrent_frames();
 
-    create_buffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform_buffer, uniform_buffer_memory);
+    uniform_buffer.create(vkd, Buffer::CreateData{buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT});
 
-    vkd.vkdf->vkMapMemory(vkd.device, uniform_buffer_memory, 0, buffer_size, 0, reinterpret_cast<void**>(&uniform_buffer_memory_ptr));
+    vkd.vkdf->vkMapMemory(vkd.device, uniform_buffer.get_vk_buffer_memory(), 0, buffer_size, 0, reinterpret_cast<void**>(&uniform_buffer_memory_ptr));
 }
 
 void VulkanRenderer::create_descriptor_sets() {
@@ -421,7 +425,7 @@ void VulkanRenderer::create_descriptor_sets() {
         qFatal("Failed to alocate descriptor set: %d", res);
 
     VkDescriptorBufferInfo buffer_info{};
-    buffer_info.buffer = uniform_buffer;
+    buffer_info.buffer = uniform_buffer.get_vk_buffer();
     buffer_info.offset = 0;
     buffer_info.range = sizeof(UniformBufferObject);
 
@@ -458,66 +462,5 @@ void VulkanRenderer::update_uniform_buffer(uint32_t current_frame_index) {
     ubo.view = glm::lookAt(glm::vec3(2.0f,2.0f,2.0f), glm::vec3(0.0f,0.0f,0.0f), glm::vec3(0.0f,1.0f,0.0f));
     ubo.projection = glm::perspective(glm::radians(45.0f), vulkan_window->width()/float(vulkan_window->height()), 0.1f, 10.0f);
 
-    // void* data;
-    // vkd.vkdf->vkMapMemory(vkd.device, uniform_buffer_memory, current_frame_index*aligned_size, sizeof(ubo), 0, &data);
     memcpy(uniform_buffer_memory_ptr + current_frame_index*aligned_size, &ubo, sizeof(ubo));
-    // vkd.vkdf->vkUnmapMemory(vkd.device, uniform_buffer_memory);
-}
-
-void VulkanRenderer::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkBuffer& buffer, VkDeviceMemory& memory) {
-    VkBufferCreateInfo buffer_info{};
-    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    buffer_info.size = size;
-    buffer_info.usage = usage;
-    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VkResult res = vkd.vkdf->vkCreateBuffer(vkd.device, &buffer_info, nullptr, &buffer);
-    if (res != VK_SUCCESS) {
-        qFatal("Failed to allocate memory for buffer: %d", res);
-    }
-
-    VkMemoryRequirements memory_requirements;
-    vkd.vkdf->vkGetBufferMemoryRequirements(vkd.device, buffer, &memory_requirements);
-
-    VkMemoryAllocateInfo allocation_info{};
-    allocation_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocation_info.allocationSize = memory_requirements.size;
-    allocation_info.memoryTypeIndex = find_memory_type(vkd, memory_requirements.memoryTypeBits, memory_properties);
-    if (allocation_info.memoryTypeIndex == uint32_t(-1))
-        qFatal("Failed to find suitable memory type index.");
-
-    res = vkd.vkdf->vkAllocateMemory(vkd.device, &allocation_info, nullptr, &memory);
-    if (res != VK_SUCCESS) {
-        qFatal("Failed to allocate memory for vertex buffer: %d", res);
-    }
-
-    vkd.vkdf->vkBindBufferMemory(vkd.device, buffer, memory, 0);
-}
-
-void VulkanRenderer::copy_data_to_buffer(VkBuffer dst_buffer, const void* data, VkDeviceSize size) {
-    VkBuffer staging_buffer;
-    VkDeviceMemory staging_buffer_memory;
-
-    create_buffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-    void* buffer_data;
-    vkd.vkdf->vkMapMemory(vkd.device, staging_buffer_memory, 0, size, 0, &buffer_data);
-    memcpy(buffer_data, data, size);
-    vkd.vkdf->vkUnmapMemory(vkd.device, staging_buffer_memory);
-
-    copy_buffer(staging_buffer, dst_buffer, size);
-
-    vkd.vkdf->vkDestroyBuffer(vkd.device, staging_buffer, nullptr);
-    vkd.vkdf->vkFreeMemory(vkd.device, staging_buffer_memory, nullptr);
-}
-
-void VulkanRenderer::copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
-    VkCommandBuffer command_buffer = begin_single_time_commands(vkd, vulkan_window->get_graphics_command_pool());
-
-    VkBufferCopy copy_region{};
-    copy_region.srcOffset = 0;
-    copy_region.dstOffset = 0;
-    copy_region.size = size;
-    vkd.vkdf->vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
-
-    end_single_time_commands(vkd, vulkan_window->get_graphics_command_pool(), vulkan_window->get_graphics_queue(), command_buffer, fence_timeout);
 }
