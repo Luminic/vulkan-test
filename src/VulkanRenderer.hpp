@@ -60,14 +60,13 @@ private:
     void create_descriptor_pool();
     VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
 
-    struct FrameResources {
-        VkBuffer uniform_buffer = VK_NULL_HANDLE;
-        VkDeviceMemory uniform_buffer_memory = VK_NULL_HANDLE;
-        VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
-    };
     void create_uniform_buffers();
+    VkBuffer uniform_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory uniform_buffer_memory = VK_NULL_HANDLE;
+    VkDeviceSize aligned_size = 0;
+    uchar* uniform_buffer_memory_ptr = nullptr;
     void create_descriptor_sets();
-    std::vector<FrameResources> frame_resources;
+    VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
 
     void update_uniform_buffer(uint32_t current_frame_index);
     UniformBufferObject ubo{};

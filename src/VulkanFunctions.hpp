@@ -12,9 +12,11 @@ struct VulkanData {
     VkDevice device = VK_NULL_HANDLE;
 };
 
+inline VkDeviceSize align_to(VkDeviceSize size, VkDeviceSize min_alignment) {
+    return (size + min_alignment - 1) & ~(min_alignment - 1);
+}
 
 uint32_t find_memory_type(VulkanData vkd, uint32_t type_filter, VkMemoryPropertyFlags properties);
-
 
 VkCommandBuffer begin_single_time_commands(VulkanData vkd, VkCommandPool command_pool);
 void end_single_time_commands(VulkanData vkd, VkCommandPool command_pool, VkQueue queue, VkCommandBuffer command_buffer, uint64_t fence_timeout=1'000'000'000);

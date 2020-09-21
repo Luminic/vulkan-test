@@ -73,7 +73,6 @@ void VulkanRenderer::init_swap_chain_resources() {
     qDebug() << "init_swap_chain_resources";
 
     // Shouldn't change but just in case
-    frame_resources.resize(vulkan_window->get_nr_concurrent_frames());
     create_descriptor_pool();
     create_uniform_buffers();
     create_descriptor_sets();
@@ -82,12 +81,9 @@ void VulkanRenderer::init_swap_chain_resources() {
 void VulkanRenderer::release_swap_chain_resources() {
     qDebug() << "release_swap_chain_resources";
 
-    for (auto& frame_resource : frame_resources) {
-        vkd.vkdf->vkDestroyBuffer(vkd.device, frame_resource.uniform_buffer, nullptr);
-        frame_resource.uniform_buffer = VK_NULL_HANDLE;
-        vkd.vkdf->vkFreeMemory(vkd.device, frame_resource.uniform_buffer_memory, nullptr);
-        frame_resource.uniform_buffer_memory = VK_NULL_HANDLE;
-    }
+    vkd.vkdf->vkUnmapMemory(vkd.device, uniform_buffer_memory);
+    vkd.vkdf->vkDestroyBuffer(vkd.device, uniform_buffer, nullptr);
+    vkd.vkdf->vkFreeMemory(vkd.device, uniform_buffer_memory, nullptr);
 
     vkd.vkdf->vkDestroyDescriptorPool(vkd.device, descriptor_pool, nullptr);
     descriptor_pool = VK_NULL_HANDLE;
@@ -173,7 +169,9 @@ void VulkanRenderer::start_next_frame() {
     vkd.vkdf->vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
     vkd.vkdf->vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, offsets);
 
-    vkd.vkdf->vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &frame_resources[current_frame_index].descriptor_set, 0, nullptr);
+    uint32_t dynamic_uniform_buffer_offset = current_frame_index * aligned_size;
+    vkd.vkdf->vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 1, &dynamic_uniform_buffer_offset);
+
     vkd.vkdf->vkCmdDrawIndexed(command_buffer, indices.size(), 1, 0, 0, 0);
     vkd.vkdf->vkCmdEndRenderPass(command_buffer);
 
@@ -184,7 +182,7 @@ void VulkanRenderer::start_next_frame() {
 void VulkanRenderer::create_descriptor_set_layout() {
     VkDescriptorSetLayoutBinding ubo_layout_binding{};
     ubo_layout_binding.binding = 0;
-    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     ubo_layout_binding.descriptorCount = 1;
     ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     ubo_layout_binding.pImmutableSamplers = nullptr;
@@ -382,15 +380,15 @@ void VulkanRenderer::create_texture_image() {
 
 void VulkanRenderer::create_descriptor_pool() {
     VkDescriptorPoolSize pool_sizes[] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (uint32_t)frame_resources.size()},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)frame_resources.size()},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
     };
 
     VkDescriptorPoolCreateInfo pool_create_info{};
     pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_create_info.poolSizeCount = sizeof(pool_sizes)/sizeof(pool_sizes[0]);
     pool_create_info.pPoolSizes = pool_sizes;
-    pool_create_info.maxSets = frame_resources.size();
+    pool_create_info.maxSets = 1;
 
 
     VkResult res = vkd.vkdf->vkCreateDescriptorPool(vkd.device, &pool_create_info, nullptr, &descriptor_pool);
@@ -399,11 +397,16 @@ void VulkanRenderer::create_descriptor_pool() {
 }
 
 void VulkanRenderer::create_uniform_buffers() {
-    VkDeviceSize buffer_size = sizeof(UniformBufferObject);
+    VkDeviceSize ubo_size = sizeof(UniformBufferObject);
+    VkPhysicalDeviceProperties pdp;
+    vkd.vkf->vkGetPhysicalDeviceProperties(vkd.physical_device, &pdp);
+    aligned_size = align_to(ubo_size, pdp.limits.minUniformBufferOffsetAlignment);
 
-    for (auto& frame_resource : frame_resources) {
-        create_buffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, frame_resource.uniform_buffer, frame_resource.uniform_buffer_memory);
-    }
+    VkDeviceSize buffer_size = aligned_size * vulkan_window->get_nr_concurrent_frames();
+
+    create_buffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform_buffer, uniform_buffer_memory);
+
+    vkd.vkdf->vkMapMemory(vkd.device, uniform_buffer_memory, 0, buffer_size, 0, reinterpret_cast<void**>(&uniform_buffer_memory_ptr));
 }
 
 void VulkanRenderer::create_descriptor_sets() {
@@ -413,41 +416,39 @@ void VulkanRenderer::create_descriptor_sets() {
     allocation_info.descriptorSetCount = 1;
     allocation_info.pSetLayouts = &descriptor_set_layout;
 
-    for (auto& frame_resource : frame_resources) {
-        VkResult res = vkd.vkdf->vkAllocateDescriptorSets(vkd.device, &allocation_info, &frame_resource.descriptor_set);
-        if (res != VK_SUCCESS)
-            qFatal("Failed to alocate descriptor set: %d", res);
+    VkResult res = vkd.vkdf->vkAllocateDescriptorSets(vkd.device, &allocation_info, &descriptor_set);
+    if (res != VK_SUCCESS)
+        qFatal("Failed to alocate descriptor set: %d", res);
 
-        VkDescriptorBufferInfo buffer_info{};
-        buffer_info.buffer = frame_resource.uniform_buffer;
-        buffer_info.offset = 0;
-        buffer_info.range = sizeof(UniformBufferObject);
+    VkDescriptorBufferInfo buffer_info{};
+    buffer_info.buffer = uniform_buffer;
+    buffer_info.offset = 0;
+    buffer_info.range = sizeof(UniformBufferObject);
 
-        VkDescriptorImageInfo image_info{};
-        image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        image_info.imageView = texture_image.get_vk_image_view();
-        image_info.sampler = texture_image.get_vk_sampler();
+    VkDescriptorImageInfo image_info{};
+    image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image_info.imageView = texture_image.get_vk_image_view();
+    image_info.sampler = texture_image.get_vk_sampler();
 
-        VkWriteDescriptorSet descriptor_writes[2] = {};
+    VkWriteDescriptorSet descriptor_writes[2] = {};
 
-        descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptor_writes[0].dstSet = frame_resource.descriptor_set;
-        descriptor_writes[0].dstBinding = 0;
-        descriptor_writes[0].dstArrayElement = 0;
-        descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptor_writes[0].descriptorCount = 1;
-        descriptor_writes[0].pBufferInfo = &buffer_info;
+    descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptor_writes[0].dstSet = descriptor_set;
+    descriptor_writes[0].dstBinding = 0;
+    descriptor_writes[0].dstArrayElement = 0;
+    descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    descriptor_writes[0].descriptorCount = 1;
+    descriptor_writes[0].pBufferInfo = &buffer_info;
 
-        descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptor_writes[1].dstSet = frame_resource.descriptor_set;
-        descriptor_writes[1].dstBinding = 1;
-        descriptor_writes[1].dstArrayElement = 0;
-        descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptor_writes[1].descriptorCount = 1;
-        descriptor_writes[1].pImageInfo = &image_info;
+    descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptor_writes[1].dstSet = descriptor_set;
+    descriptor_writes[1].dstBinding = 1;
+    descriptor_writes[1].dstArrayElement = 0;
+    descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptor_writes[1].descriptorCount = 1;
+    descriptor_writes[1].pImageInfo = &image_info;
 
-        vkd.vkdf->vkUpdateDescriptorSets(vkd.device, sizeof(descriptor_writes)/sizeof(descriptor_writes[0]), descriptor_writes, 0, nullptr);
-    }
+    vkd.vkdf->vkUpdateDescriptorSets(vkd.device, sizeof(descriptor_writes)/sizeof(descriptor_writes[0]), descriptor_writes, 0, nullptr);
 }
 
 void VulkanRenderer::update_uniform_buffer(uint32_t current_frame_index) {
@@ -457,10 +458,10 @@ void VulkanRenderer::update_uniform_buffer(uint32_t current_frame_index) {
     ubo.view = glm::lookAt(glm::vec3(2.0f,2.0f,2.0f), glm::vec3(0.0f,0.0f,0.0f), glm::vec3(0.0f,1.0f,0.0f));
     ubo.projection = glm::perspective(glm::radians(45.0f), vulkan_window->width()/float(vulkan_window->height()), 0.1f, 10.0f);
 
-    void* data;
-    vkd.vkdf->vkMapMemory(vkd.device, frame_resources[current_frame_index].uniform_buffer_memory, 0, sizeof(ubo), 0, &data);
-    memcpy(data, &ubo, sizeof(ubo));
-    vkd.vkdf->vkUnmapMemory(vkd.device, frame_resources[current_frame_index].uniform_buffer_memory);
+    // void* data;
+    // vkd.vkdf->vkMapMemory(vkd.device, uniform_buffer_memory, current_frame_index*aligned_size, sizeof(ubo), 0, &data);
+    memcpy(uniform_buffer_memory_ptr + current_frame_index*aligned_size, &ubo, sizeof(ubo));
+    // vkd.vkdf->vkUnmapMemory(vkd.device, uniform_buffer_memory);
 }
 
 void VulkanRenderer::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkBuffer& buffer, VkDeviceMemory& memory) {
